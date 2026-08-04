@@ -96,4 +96,32 @@ function buildConfirmationEmailHtml(payload) {
   );
 }
 
-module.exports = { buildConfirmationEmailHtml };
+// ── Generic internal-notification email (admin new-booking / cancellation
+// / reschedule / reminder-to-Akanksha) — reuses the same visual language
+// as the customer confirmation so anyone opening either email recognizes
+// the brand, but with a simple label/value table instead of prose.
+function buildInternalNoticeHtml(heading, intro, rows) {
+  const rowsHtml = rows.map(([label, value]) => row(label, value)).join('');
+  return (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
+    '<body style="margin:0;padding:0;background:#F7FAF8;width:100%!important">' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F7FAF8;padding:32px 16px">' +
+        '<tr><td align="center">' +
+          '<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background:#FFFFFF;border:1px solid #E3EFE9;border-radius:8px;overflow:hidden">' +
+            '<tr><td style="background:#123D30;padding:24px 32px;text-align:center">' +
+              '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:12px;letter-spacing:0.35em;color:#B8DCCE;text-transform:uppercase;margin-bottom:6px">The Ocultt Tarot · CRM</div>' +
+              '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:20px;color:#FFFFFF">' + esc(heading) + '</div>' +
+            '</td></tr>' +
+            '<tr><td style="padding:28px 32px">' +
+              (intro ? '<p style="margin:0 0 16px;font-family:Georgia,\'Times New Roman\',serif;font-size:14px;line-height:1.7;color:#1A3329">' + esc(intro) + '</p>' : '') +
+              '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' + rowsHtml + '</table>' +
+            '</td></tr>' +
+          '</table>' +
+        '</td></tr>' +
+      '</table>' +
+    '</body></html>'
+  );
+}
+
+module.exports = { buildConfirmationEmailHtml, buildInternalNoticeHtml };

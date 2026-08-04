@@ -224,6 +224,17 @@
       });
     },
 
+    /* ── getIdToken ──────────────────────────────────────────────────
+       Returns a Promise resolving to the current user's Firebase ID
+       token (or null if signed out). This is the real, verifiable proof
+       of identity — used as the CRM's admin key (x-admin-key header) so
+       the backend can check who is actually calling it, instead of
+       trusting the browser.
+       ──────────────────────────────────────────────────────────────── */
+    getIdToken: function () {
+      return _auth.currentUser ? _auth.currentUser.getIdToken() : Promise.resolve(null);
+    },
+
     /* ── isConfigured ────────────────────────────────────────────────
        Returns true only when FIREBASE_CONFIG has been filled in with
        real credentials.  While the placeholder strings are still in

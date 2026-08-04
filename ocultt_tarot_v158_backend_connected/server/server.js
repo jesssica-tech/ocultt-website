@@ -13,6 +13,15 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const sendEmailRoute = require('./routes/sendEmail');
+const bookingsRoute = require('./routes/bookings');
+const spellsRoute = require('./routes/spells');
+const availabilityRoute = require('./routes/availability');
+const paymentsRoute = require('./routes/payments');
+const messagesRoute = require('./routes/messages');
+const remindersRoute = require('./routes/reminders');
+const calendlyWebhookRoute = require('./routes/calendlyWebhook');
+const calendlySetupRoute = require('./routes/calendlySetup');
+const { supabase } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -45,7 +54,12 @@ app.use(cors({
   }
 }));
 
-app.use(express.json({ limit: '200kb' }));
+// ── Calendly webhook — mounted BEFORE the global JSON parser below,
+// because its own route needs the raw request body (for HMAC signature
+// verification) which express.json() would otherwise already consume. ──
+app.use('/api', calendlyWebhookRoute);
+
+app.use(express.json({ limit: '400kb' }));
 
 // ── Global rate limit — a light baseline across the whole API; the
 // send-email route also has its own tighter, purpose-specific limit. ──
@@ -63,6 +77,13 @@ app.get('/api/health', (req, res) => {
 
 // ── Routes ──
 app.use('/api', sendEmailRoute);
+app.use('/api', bookingsRoute);
+app.use('/api', spellsRoute);
+app.use('/api', availabilityRoute);
+app.use('/api', paymentsRoute);
+app.use('/api', messagesRoute);
+app.use('/api', remindersRoute);
+app.use('/api', calendlySetupRoute);
 
 // ── 404 + error handling ──
 app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found' }));
@@ -95,4 +116,11 @@ app.listen(PORT, () => {
       console.warn('[startup] ⚠ theocultttarot.com is not in ALLOWED_ORIGINS — requests from the live site will be blocked by CORS.');
     }
   }
+
+  console.log(supabase ? '[startup] ✓ Supabase connected' : '[startup] ⚠ Supabase NOT configured — every DB-backed route (bookings, spells, CRM, availability) returns 503. See server/schema.sql + .env.example.');
+  console.log((process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) ? '[startup] ✓ Razorpay configured' : '[startup] ⚠ Razorpay NOT configured — checkout will 503.');
+  console.log((process.env.CLOUDINARY_CLOUD_NAME) ? '[startup] ✓ Cloudinary configured' : '[startup] ⚠ Cloudinary NOT configured — spell video upload / CRM attachments will 503.');
+  console.log(process.env.CALENDLY_WEBHOOK_SIGNING_KEY ? '[startup] ✓ Calendly webhook signing key set' : '[startup] ⚠ CALENDLY_WEBHOOK_SIGNING_KEY not set — /api/calendly/webhook accepts unverified requests until you subscribe the webhook.');
+  console.log(process.env.REMINDER_CRON_KEY ? '[startup] ✓ Reminder cron key set — /api/reminders/run is ready for your external cron ping.' : '[startup] ⚠ REMINDER_CRON_KEY not set — reminders will not run.');
+  console.log((process.env.CALENDLY_API_TOKEN && process.env.CALENDLY_SETUP_KEY) ? '[startup] ✓ Calendly registration endpoint ready — GET /api/calendly/register-webhook?key=...&callbackUrl=... to run it once.' : '[startup] ⚠ CALENDLY_API_TOKEN / CALENDLY_SETUP_KEY not both set — /api/calendly/register-webhook will 503 until configured.');
 });

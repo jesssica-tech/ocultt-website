@@ -3816,7 +3816,9 @@ function openBookingDetail(bookingId) {
         ${b.additionalNotes ? `<div style="margin-top:0.5rem"><p class="cd-info-label" style="margin-bottom:0.2rem">Additional Notes</p><p style="font-size:0.9rem;color:var(--text);line-height:1.55;margin:0">${b.additionalNotes}</p></div>` : ''}
       </div>`;
       return '';
-    })()}`;
+    })()}
+    <div id="bd-crm-extra" style="margin-top:1rem"></div>`;
+  renderCrmExtras(bookingId);
 
   // ── Customer Contact ──
   document.getElementById('bd-contact').innerHTML = `
@@ -3865,6 +3867,120 @@ function openBookingDetail(bookingId) {
   panel.style.display = 'block';
   requestAnimationFrame(() => panel.classList.add('is-open'));
   document.body.style.overflow = 'hidden';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// CRM EXTRAS — live backend data for the booking detail panel: this
+// client's history across every device/browser (not just this one, which
+// is all OculttDB/localStorage can see), and a message thread so sending
+// something to a client never requires leaving the CRM to open Gmail.
+// Everything here is best-effort — if the backend isn't connected yet,
+// it shows a quiet note instead of an error.
+// ══════════════════════════════════════════════════════════════════════
+async function renderCrmExtras(bookingId) {
+  const el = document.getElementById('bd-crm-extra');
+  if (!el) return;
+
+  if (!OCULTT_BACKEND_CONNECTED) {
+    el.innerHTML = `<p style="font-family:'Montserrat',sans-serif;font-size:0.82rem;color:var(--text-dim);font-style:italic;padding-top:0.75rem;border-top:1px solid var(--border)">Client history & messages will appear here once the CRM backend is connected.</p>`;
+    return;
+  }
+
+  el.innerHTML = `<p style="font-size:0.82rem;color:var(--text-dim);font-style:italic;padding-top:0.75rem;border-top:1px solid var(--border)">Loading history &amp; messages…</p>`;
+
+  let data;
+  try {
+    data = await apiGet('/bookings/' + bookingId);
+    if (data.error) throw new Error(data.error);
+  } catch (err) {
+    console.warn('[renderCrmExtras]', err.message);
+    el.innerHTML = `<p style="font-family:'Montserrat',sans-serif;font-size:0.82rem;color:var(--text-dim);font-style:italic;padding-top:0.75rem;border-top:1px solid var(--border)">Couldn't load client history right now.</p>`;
+    return;
+  }
+
+  const history = data.history || [];
+  const messages = data.messages || [];
+
+  el.innerHTML = `
+    <div style="padding-top:0.75rem;border-top:1px solid var(--border)">
+      <p class="cd-info-label" style="margin-bottom:0.5rem">Client History — Other Bookings</p>
+      ${history.length ? history.map(h => `
+        <div class="cd-info-item" style="margin-bottom:0.3rem">
+          <span class="cd-info-value" style="cursor:pointer" onclick="openBookingDetail('${h.id}')">${h.service} · ${h.id}</span>
+          <span class="badge ${statusBadgeClass(h.status)}">${h.status||'—'}</span>
+        </div>`).join('') : `<p style="font-size:0.85rem;color:var(--text-dim);font-style:italic">No other bookings from this email yet.</p>`}
+    </div>
+
+    <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+      <p class="cd-info-label" style="margin-bottom:0.5rem">Google Meet Summary</p>
+      <textarea id="bd-meet-summary" rows="3" placeholder="Notes from the call — what was discussed, follow-ups, anything worth remembering next time." style="width:100%;font-family:'Montserrat',sans-serif;font-size:0.88rem;padding:0.6rem;border:1px solid var(--border);background:transparent;color:var(--text);resize:vertical">${(data.booking && data.booking.meet_summary) || ''}</textarea>
+      <button class="cd-action-btn" style="margin-top:0.5rem" onclick="saveMeetSummary('${bookingId}')">Save Summary</button>
+      <span id="bd-meet-summary-status" style="font-size:0.78rem;color:var(--text-dim);margin-left:0.5rem"></span>
+    </div>
+
+    <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+      <p class="cd-info-label" style="margin-bottom:0.5rem">Messages to Client</p>
+      <div id="bd-message-thread" style="max-height:220px;overflow-y:auto;margin-bottom:0.6rem">
+        ${messages.length ? messages.map(m => `
+          <div class="cd-timeline-item">
+            <span style="font-size:0.78rem;color:var(--text-muted)">${fmtDate(m.created_at)} · ${m.sent_by||'CRM'}</span>
+            <div style="font-size:0.88rem;color:var(--text);margin-top:0.15rem">${m.subject ? '<strong>'+m.subject+'</strong><br>' : ''}${m.body||''}${m.attachment_url ? '<br><a href="'+m.attachment_url+'" target="_blank" rel="noopener">📎 Attachment</a>' : ''}</div>
+          </div>`).join('') : `<p style="font-size:0.85rem;color:var(--text-dim);font-style:italic">No messages sent yet.</p>`}
+      </div>
+      <input id="bd-msg-subject" type="text" placeholder="Subject (optional)" style="width:100%;margin-bottom:0.4rem;font-family:'Montserrat',sans-serif;font-size:0.85rem;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text)">
+      <textarea id="bd-msg-body" rows="2" placeholder="Message to the client…" style="width:100%;margin-bottom:0.4rem;font-family:'Montserrat',sans-serif;font-size:0.85rem;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);resize:vertical"></textarea>
+      <input id="bd-msg-attachment" type="file" accept="audio/*,video/*,image/*,.pdf" style="font-size:0.8rem;margin-bottom:0.4rem">
+      <br>
+      <button class="cd-action-btn" style="background:var(--gold-dk);color:#fff" onclick="sendCrmMessage('${bookingId}')">✉ Send to Client</button>
+      <span id="bd-msg-status" style="font-size:0.78rem;color:var(--text-dim);margin-left:0.5rem"></span>
+    </div>`;
+}
+
+async function saveMeetSummary(bookingId) {
+  const statusEl = document.getElementById('bd-meet-summary-status');
+  const value = document.getElementById('bd-meet-summary').value;
+  statusEl.textContent = 'Saving…';
+  try {
+    const result = await apiPatch('/bookings/' + bookingId, { meet_summary: value });
+    if (!result.ok) throw new Error(result.error || 'Save failed');
+    statusEl.textContent = '✓ Saved';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (err) {
+    statusEl.textContent = '✗ ' + err.message;
+  }
+}
+
+async function sendCrmMessage(bookingId) {
+  const subject = document.getElementById('bd-msg-subject').value.trim();
+  const body = document.getElementById('bd-msg-body').value.trim();
+  const fileInput = document.getElementById('bd-msg-attachment');
+  const file = fileInput.files[0];
+  const statusEl = document.getElementById('bd-msg-status');
+
+  if (!body && !file) { statusEl.textContent = 'Write a message or attach a file first.'; return; }
+
+  statusEl.textContent = 'Sending…';
+  try {
+    const formData = new FormData();
+    if (subject) formData.append('subject', subject);
+    if (body) formData.append('body', body);
+    if (file) formData.append('attachment', file);
+
+    const r = await fetch(OCULTT_API + '/bookings/' + bookingId + '/messages', {
+      method: 'POST',
+      headers: { 'x-admin-key': getAdminKey() },
+      body: formData
+    });
+    const result = await r.json();
+    if (!result.ok) throw new Error(result.error || 'Send failed');
+    statusEl.textContent = '✓ Sent';
+    document.getElementById('bd-msg-subject').value = '';
+    document.getElementById('bd-msg-body').value = '';
+    fileInput.value = '';
+    renderCrmExtras(bookingId);
+  } catch (err) {
+    statusEl.textContent = '✗ ' + err.message;
+  }
 }
 
 function faRenderNotesList(notes){
@@ -4823,10 +4939,21 @@ function gauthInit() {
       // If user just signed out and the modal happens to be open,
       // refresh the button so it is ready for the next visitor.
       if (!user) {
+        sessionStorage.removeItem('ocultt_admin_key');
         var container = document.getElementById('gauth-google-btn');
         if (container && container.innerHTML === '') {
           _gauthRenderFirebaseButton();
         }
+      } else {
+        // Real backend admin auth: store the actual Firebase ID token as
+        // the admin key (see getAdminKey()/adminHeaders() below) so the
+        // CRM API routes can verify who is really calling them, not just
+        // trust a client-side email check. Refreshed on every auth-state
+        // change, which Firebase also fires periodically as the token
+        // silently renews.
+        window.OculttFirebase.getIdToken().then(function (token) {
+          if (token) sessionStorage.setItem('ocultt_admin_key', token);
+        }).catch(function (e) { console.warn('[gauthInit] getIdToken failed:', e.message); });
       }
     });
 
@@ -5558,7 +5685,7 @@ updateAdminGreeting();
 //     on the same timeline notes and status changes already use.
 // ══════════════════════════════════════════════════════════════════════════
 
-const OCULTT_API = 'https://ocultt-website-production.up.railway.app/api';
+const OCULTT_API = 'https://ocultt-website.onrender.com/api';
 // During local dev, use: const OCULTT_API = 'http://localhost:3001/api';
 
 // Phase 1 (local-only): no live backend is deployed yet. Every caller below
