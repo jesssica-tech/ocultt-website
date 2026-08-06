@@ -21,6 +21,7 @@ const messagesRoute = require('./routes/messages');
 const remindersRoute = require('./routes/reminders');
 const calendlyWebhookRoute = require('./routes/calendlyWebhook');
 const calendlySetupRoute = require('./routes/calendlySetup');
+const gmailAuthSetupRoute = require('./routes/gmailAuthSetup');
 const { supabase } = require('./db');
 
 const app = express();
@@ -84,6 +85,7 @@ app.use('/api', paymentsRoute);
 app.use('/api', messagesRoute);
 app.use('/api', remindersRoute);
 app.use('/api', calendlySetupRoute);
+app.use('/api', gmailAuthSetupRoute);
 
 // ── 404 + error handling ──
 app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found' }));
@@ -101,13 +103,8 @@ app.listen(PORT, () => {
   // ── Startup diagnostics — surfaces the most common causes of "emails
   // aren't sending" immediately in the deploy logs, instead of only on
   // the first booking attempt. ──
-  const gmailUser = process.env.GMAIL_USER || process.env.EMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS;
-  if (!gmailUser || !gmailPass) {
-    console.warn('[startup] ⚠ Gmail credentials NOT found — checked GMAIL_USER/GMAIL_APP_PASSWORD and EMAIL_USER/EMAIL_PASS. Emails will fail until one pair is set.');
-  } else {
-    console.log('[startup] ✓ Gmail credentials found for %s (via %s)', gmailUser, process.env.GMAIL_USER ? 'GMAIL_USER/GMAIL_APP_PASSWORD' : 'EMAIL_USER/EMAIL_PASS');
-  }
+  // (Gmail's own status is logged further below, alongside the other
+  // integrations — see the Gmail API line.)
   if (allowedOrigins.length === 0) {
     console.warn('[startup] ⚠ ALLOWED_ORIGINS is empty — every browser request will be blocked by CORS until this is set.');
   } else {
@@ -117,6 +114,9 @@ app.listen(PORT, () => {
     }
   }
 
+console.log((process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN)
+  ? '[startup] ✓ Gmail API (OAuth2) configured — sending is live.'
+  : '[startup] ⚠ Gmail API not fully configured yet — GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN needed. Run the one-time flow at /api/gmail/authorize once GMAIL_CLIENT_ID/SECRET/REDIRECT_URI/SETUP_KEY are set.');
   console.log(supabase ? '[startup] ✓ Supabase connected' : '[startup] ⚠ Supabase NOT configured — every DB-backed route (bookings, spells, CRM, availability) returns 503. See server/schema.sql + .env.example.');
   console.log((process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) ? '[startup] ✓ Razorpay configured' : '[startup] ⚠ Razorpay NOT configured — checkout will 503.');
   console.log((process.env.CLOUDINARY_CLOUD_NAME) ? '[startup] ✓ Cloudinary configured' : '[startup] ⚠ Cloudinary NOT configured — spell video upload / CRM attachments will 503.');
