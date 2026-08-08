@@ -30,9 +30,10 @@ const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1); // needed for correct req.ip behind Railway/Render/etc. reverse proxies
 app.use(helmet());
 
-// ── CORS ── only allow the frontend origins listed in .env.
-// Fails CLOSED if ALLOWED_ORIGINS isn't set — a misconfigured deploy
-// should refuse cross-origin requests, never silently accept everyone.
+// ── CORS ──────────────────────────────────────────────────────────────
+// Allowed origins come from ALLOWED_ORIGINS in .env (comma-separated).
+// Fails CLOSED if it isn't set — a misconfigured deploy should refuse
+// cross-origin requests, never silently accept everyone.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map(o => o.trim())
@@ -42,18 +43,55 @@ if (allowedOrigins.length === 0) {
   console.warn('[CORS] ALLOWED_ORIGINS is not set — all cross-origin browser requests will be blocked until it is configured in .env.');
 }
 
-app.use(cors({
+// "null" origin ── when a page is opened straight from disk (file://
+// index.html, no local server) instead of via http://, browsers send the
+// literal header Origin: null. This is what produced the
+// "CORS Blocked request from origin: null" log line. Allowing it makes
+// local double-click-to-open testing work, but it is NOT something to
+// leave on in production: any local HTML file on anyone's machine, or a
+// sandboxed iframe/PDF, also sends "null" and would be let in too — it's
+// a real, well-known way to widen an API's attack surface, not a normal
+// browser origin like theocultttarot.com. It's therefore gated behind
+// its own explicit opt-in (ALLOW_NULL_ORIGIN=true) rather than being
+// silently enabled by NODE_ENV, so it can never turn on by accident.
+const allowNullOrigin = process.env.ALLOW_NULL_ORIGIN === 'true';
+if (allowNullOrigin) {
+  console.warn('[CORS] ⚠ ALLOW_NULL_ORIGIN=true — requests with Origin: null (e.g. local file:// testing) are being accepted. Turn this OFF on the production Render env once local testing is done.');
+}
+
+const corsOptions = {
   origin: function (origin, callback) {
-    // Requests with no Origin header (curl, Postman, server-to-server) are
-    // allowed through — CORS is a browser-enforced protection and doesn't
-    // apply to non-browser clients anyway.
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    // No Origin header at all (curl, Postman, server-to-server calls,
+    // the Calendly webhook) — CORS is a browser-enforced protection and
+    // doesn't apply to non-browser clients anyway.
+    if (!origin) return callback(null, true);
+
+    if (origin === 'null') {
+      if (allowNullOrigin) return callback(null, true);
+      console.warn('[CORS] Blocked request from origin: null (set ALLOW_NULL_ORIGIN=true in your env to allow this for local file:// testing only)');
+      return callback(new Error('Not allowed by CORS'));
     }
+
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
     console.warn('[CORS] Blocked request from origin:', origin);
     return callback(new Error('Not allowed by CORS'));
-  }
-}));
+  },
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  // Content-Type/Authorization cover the standard cases; x-admin-key is
+  // the header the existing CRM/admin routes actually send today
+  // (see adminHeaders() in js/script.js) — omitting it would silently
+  // break every admin/CRM API call under strict header checking, which
+  // is exactly the kind of breakage this task said not to cause.
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-key'],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+// Explicit preflight handling for every route, so OPTIONS requests never
+// fall through to the 404/rate-limit/body-parser logic below.
+app.options('*', cors(corsOptions));
 
 // ── Calendly webhook — mounted BEFORE the global JSON parser below,
 // because its own route needs the raw request body (for HMAC signature
@@ -113,6 +151,7 @@ app.listen(PORT, () => {
       console.warn('[startup] ⚠ theocultttarot.com is not in ALLOWED_ORIGINS — requests from the live site will be blocked by CORS.');
     }
   }
+  console.log(allowNullOrigin ? '[startup] ⚠ ALLOW_NULL_ORIGIN=true (null-origin/file:// requests accepted — dev only)' : '[startup] ✓ ALLOW_NULL_ORIGIN not set — null-origin requests are blocked (production-safe default)');
 
 console.log((process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN)
   ? '[startup] ✓ Gmail API (OAuth2) configured — sending is live.'
