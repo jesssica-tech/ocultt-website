@@ -88,6 +88,21 @@ create table if not exists availability_blocks (
   created_at timestamptz default now()
 );
 
+-- ── users ── every customer who has ever signed in with Google on the
+-- public site (NOT the CRM allowlist — see crm_users below for that).
+-- Saved automatically by POST /api/users/sync right after Firebase login.
+-- uid is the real Firebase UID, so it's a stable key even if someone
+-- changes their Google display name/email later.
+create table if not exists users (
+  uid          text primary key,
+  name         text,
+  email        text,
+  picture      text,
+  created_at   timestamptz default now(),
+  last_login_at timestamptz default now()
+);
+create index if not exists idx_users_email on users(email);
+
 -- ── crm_users ── the allowlist of who may sign into the CRM (4 of you).
 -- Login itself is still Google Sign-In (Firebase) — this table is the
 -- server-side source of truth for "is this signed-in Google account

@@ -22,6 +22,7 @@ const remindersRoute = require('./routes/reminders');
 const calendlyWebhookRoute = require('./routes/calendlyWebhook');
 const calendlySetupRoute = require('./routes/calendlySetup');
 const gmailAuthSetupRoute = require('./routes/gmailAuthSetup');
+const usersRoute = require('./routes/users');
 const { supabase } = require('./db');
 
 const app = express();
@@ -124,6 +125,7 @@ app.use('/api', messagesRoute);
 app.use('/api', remindersRoute);
 app.use('/api', calendlySetupRoute);
 app.use('/api', gmailAuthSetupRoute);
+app.use('/api', usersRoute);
 
 // ── 404 + error handling ──
 app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found' }));

@@ -161,6 +161,27 @@
     }
   }
 
+  /**
+   * Save the signed-in user's profile to the backend (Supabase `users`
+   * table), keyed by their real Firebase uid. Fire-and-forget: never
+   * blocks sign-in, never throws — if the backend isn't reachable yet
+   * (OCULTT_API undefined, or a network hiccup) the site keeps working
+   * exactly as it does today, just without the cloud-side profile save.
+   */
+  function _syncUserToBackend(firebaseUser) {
+    if (!firebaseUser) return;
+    if (typeof OCULTT_API === 'undefined' || typeof OCULTT_BACKEND_CONNECTED === 'undefined' || !OCULTT_BACKEND_CONNECTED) return;
+
+    firebaseUser.getIdToken().then(function (idToken) {
+      return fetch(OCULTT_API + '/users/sync', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + idToken }
+      });
+    }).catch(function (e) {
+      console.warn('[OculttFirebase] user sync failed (non-fatal):', e);
+    });
+  }
+
   /* ─────────────────────────────────────────────────────────────────────
      SECTION 7 — PUBLIC API  (window.OculttFirebase)
      All methods are attached to window so script.js can call them
@@ -180,6 +201,7 @@
       return _auth.signInWithPopup(_provider).then(function (result) {
         var user = _normaliseUser(result.user);
         _persist(user);
+        _syncUserToBackend(result.user);
         return user;
         // Errors propagate to the caller in script.js for UI handling
       });
@@ -220,6 +242,7 @@
       return _auth.onAuthStateChanged(function (firebaseUser) {
         var user = _normaliseUser(firebaseUser);
         _persist(user);    // keep localStorage in sync on every token refresh
+        _syncUserToBackend(firebaseUser); // no-op if signed out (firebaseUser is null)
         callback(user);
       });
     },
