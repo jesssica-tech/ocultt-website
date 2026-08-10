@@ -633,12 +633,12 @@ function _clearBanner(bannerId){
 // Used exclusively by the Phone Tarot branch of tarotNext(); no other
 // reading format, service, or booking flow reads from this map.
 const PHONE_TAROT_CALENDLY_LINKS = {
-  '10': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-15-minutes-clone',
+  '10': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-10-minutes',
   '15': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-15-minutes',
-  '20': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-10-minutes-clone',
-  '30': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-60-minutes-clone',
-  '45': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-20-minutes-clone',
-  '60': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-45-minutes-clone'
+  '20': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-20-minutes',
+  '30': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-30-minutes',
+  '45': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-45-minutes',
+  '60': 'https://calendly.com/the-ocultt-tarot/phone-tarot-reading-60-minutes'
 };
 // The exact query string Calendly must be configured to redirect back to,
 // on ALL SIX Phone Tarot event types, after a booking is completed (Calendly
