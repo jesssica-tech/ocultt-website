@@ -358,6 +358,13 @@ function showPage(id, fromPopstate){
     } else {
       // Not signed in at all — send them to the login page (the Google
       // Sign-In modal is this SPA's login screen; there's no separate URL).
+      // Remember that this sign-in was requested in order to reach the
+      // dashboard, so a successful login can automatically continue on
+      // into the admin page instead of just closing the modal and
+      // leaving the visitor back where they started (see
+      // _completePendingAdminEntry, called from every sign-in success
+      // path below).
+      _pendingAdminEntry = true;
       if (typeof showToast === 'function') showToast('Admin sign-in required to open the dashboard.');
       if (typeof openGauthModal === 'function') openGauthModal();
     }
@@ -760,10 +767,18 @@ function showCalendlyStepForPhone(calendlyUrl, nm, em){
   const calendlyView = document.getElementById('t-calendly-view');
   const widgetEl = document.getElementById('calendlyInlineWidget');
   const statusEl = document.getElementById('calendlyReturnStatus');
+  const continueBtn = document.getElementById('calendlyContinueBtn');
   if(detailsView) detailsView.style.display='none';
   if(calendlyView) calendlyView.style.display='block';
   if(statusEl) statusEl.style.display='none';
   _phoneCalendlyHandled = false;
+  // Enforce the intended flow: "Continue to Payment" stays disabled until
+  // Calendly actually confirms a real slot was booked (see
+  // onPhoneTarotCalendlyScheduled below) — a customer can no longer reach
+  // Payment merely by opening this step. Reset on every entry (including
+  // re-entering after Back) so a previous booking's enabled state never
+  // carries over to a fresh visit to this step.
+  if(continueBtn){ continueBtn.disabled = true; continueBtn.style.opacity = '0.4'; continueBtn.style.cursor = 'not-allowed'; continueBtn.title = 'Please select a call time in the calendar above first'; }
   if(_phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
   if(widgetEl){
     widgetEl.style.display='block';
@@ -799,11 +814,18 @@ function onPhoneTarotCalendlyScheduled(){
   const continueBtn = document.getElementById('calendlyContinueBtn');
   if(widgetEl) widgetEl.style.display='none';
   if(statusEl) statusEl.style.display='block';
-  if(continueBtn) continueBtn.style.display='inline-block';
+  // Only now — a real 'calendly.event_scheduled' message from Calendly's
+  // own iframe — is a genuine booking confirmed, so only now does Continue
+  // to Payment become usable.
+  if(continueBtn){ continueBtn.disabled = false; continueBtn.style.opacity = '1'; continueBtn.style.cursor = 'pointer'; continueBtn.title = ''; continueBtn.style.display='inline-block'; }
   _phoneCalendlyAutoTimer = setTimeout(proceedFromCalendlyToPayment, 2500);
 }
 
 function proceedFromCalendlyToPayment(){
+  // Defensive re-check (belt-and-braces alongside the disabled button
+  // above): never advance to Payment for a Phone Tarot booking without a
+  // real Calendly 'calendly.event_scheduled' confirmation having fired.
+  if(!_phoneCalendlyHandled) return;
   if(_phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
   tarotStep = 4;
   renderTarotStep();
@@ -4746,6 +4768,28 @@ function isAdminUser(){
   return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
 }
 
+// ── HIDDEN ADMIN ENTRY: complete the pending dashboard navigation ──────
+// showPage('admin') opens this sign-in modal when an unauthenticated
+// visitor triggers the hidden admin entry (logo clicks / secret sequence)
+// and sets _pendingAdminEntry = true right before doing so. Every sign-in
+// success handler below calls this afterward so a successful login for an
+// authorized admin account actually lands in the dashboard, instead of
+// just closing the modal and leaving the visitor on whatever page they
+// started from. Ordinary "Sign In" (nav link) logins never set the flag,
+// so they are correctly left alone — no unexpected redirect for a normal
+// visitor just signing in.
+let _pendingAdminEntry = false;
+function _completePendingAdminEntry(user){
+  if (!_pendingAdminEntry) return;
+  if (!user) return; // still signed out — nothing to do yet
+  _pendingAdminEntry = false;
+  if (isAdminUser()) {
+    showPage('admin');
+  } else if (typeof showToast === 'function') {
+    showToast('This Google account does not have admin access.');
+  }
+}
+
 // ── MODAL ────────────────────────────────────────────────────────
 function openGauthModal() {
   document.getElementById('gauthOverlay').classList.add('open');
@@ -4834,6 +4878,7 @@ function gauthHandleCredential(response) {
     localStorage.setItem(GAUTH_STORAGE_KEY, JSON.stringify(user));
     gauthUpdateUI(user);
     closeGauthModalDirect();
+    _completePendingAdminEntry(user);
   } catch (err) {
     console.error('[Ocultt Auth] Credential decode failed:', err);
   }
@@ -4845,6 +4890,7 @@ function gauthDemoSignIn() {
   localStorage.setItem(GAUTH_STORAGE_KEY, JSON.stringify(user));
   gauthUpdateUI(user);
   closeGauthModalDirect();
+  _completePendingAdminEntry(user);
 }
 
 // ── SESSION EXPIRATION (legacy / demo sign-in only) ────────────────
@@ -4938,6 +4984,10 @@ function _gauthRenderFirebaseButton() {
         // Success — update nav pill and close the modal
         gauthUpdateUI(user);
         closeGauthModalDirect();
+        // If this login was requested by the hidden admin entry, continue
+        // on into the dashboard now that the user object (and the
+        // localStorage it was persisted to) is available.
+        _completePendingAdminEntry(user);
       })
       .catch(function (err) {
         // Restore the button so the user can try again
@@ -5015,6 +5065,13 @@ function gauthInit() {
           if (token) sessionStorage.setItem('ocultt_admin_key', token);
         }).catch(function (e) { console.warn('[gauthInit] getIdToken failed:', e.message); });
       }
+      // Covers every real sign-in path (this listener fires after every
+      // Firebase auth-state change, including the popup handler above) —
+      // continues the hidden admin entry into the dashboard once a user
+      // is present, without duplicating work if the button handler above
+      // already completed it (_completePendingAdminEntry no-ops once the
+      // flag is cleared).
+      _completePendingAdminEntry(user);
     });
 
     // Pre-render the Firebase button inside the modal so it is ready

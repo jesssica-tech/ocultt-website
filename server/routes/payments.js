@@ -8,10 +8,18 @@ const { sendCustomerBookingConfirmation } = require('../utils/notify');
 const router = express.Router();
 
 // ── Server-side price enforcement ── NEVER trust a client-supplied amount.
-// Mirrors PRICE_MAP in js/script.js (Tarot Reading durations only — the
-// only service type that currently goes through Razorpay checkout).
+// This is the Phone Tarot Reading price table (the only service type that
+// currently goes through Razorpay checkout) — must have all six durations
+// customers can actually select (see the Call Duration <select> in
+// index.html and handlePhoneReadingSelect() in js/script.js, which builds
+// selectedDuration as "<mins> Min"). '10 Min' and '20 Min' were missing
+// here, which meant those two durations' checkout would fail with
+// "Unknown or unsupported duration" even though they're offered and
+// priced on the live site. Values mirror the real prices shown there.
 const TAROT_PRICE_PAISE = {
+  '10 Min': 88800,
   '15 Min': 99900,
+  '20 Min': 122200,
   '30 Min': 155500,
   '45 Min': 188800,
   '60 Min': 255500
