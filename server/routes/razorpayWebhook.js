@@ -22,7 +22,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { supabase } = require('../db');
-const { sendAdminNewBookingNotification } = require('../utils/notify');
+const { sendAdminNewBookingNotification, sendCustomerBookingConfirmation } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -77,13 +77,20 @@ router.post('/razorpay/webhook', express.json({
     } else if (event === 'payment.captured') {
       // Belt-and-braces alongside /payments/verify — in case the frontend
       // never called verify (tab closed right after payment, etc.), the
-      // webhook still gets the booking marked Paid.
+      // webhook still gets the booking marked Paid AND sends the
+      // confirmation email. Same idempotencyKey as /payments/verify's
+      // send, so a payment that goes through both paths never double-emails.
       const { data: before } = await supabase.from('bookings').select('payment_status').eq('id', bookingId).maybeSingle();
       if (before && before.payment_status !== 'Paid') {
-        await supabase.from('bookings').update({
+        const { data: updated, error } = await supabase.from('bookings').update({
           payment_status: 'Paid', payment_id: entity.id, updated_at: new Date().toISOString()
-        }).eq('id', bookingId);
-        console.log('[razorpay webhook] Recorded payment.captured for booking %s (frontend verify may not have fired)', bookingId);
+        }).eq('id', bookingId).select().maybeSingle();
+        if (error) {
+          console.warn('[razorpay webhook] Could not record payment.captured for booking %s:', bookingId, error.message);
+        } else {
+          console.log('[razorpay webhook] Recorded payment.captured for booking %s (frontend verify may not have fired)', bookingId);
+          if (updated) sendCustomerBookingConfirmation(updated).catch(() => {});
+        }
       }
     }
   } catch (err) {

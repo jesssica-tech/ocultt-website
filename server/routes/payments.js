@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const Razorpay = require('razorpay');
 const { supabase } = require('../db');
+const { sendCustomerBookingConfirmation } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -99,15 +100,20 @@ router.post('/payments/verify', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Payment signature verification failed.' });
   }
 
-  // Best-effort: mark the booking Paid if it already exists in the DB
-  // (the frontend also POSTs /bookings separately with paymentId set, so
-  // this is a belt-and-braces update, not the only place Paid gets set).
+  // Backend is the sole authority for payment status: this update — gated
+  // entirely on the HMAC signature check above, never on anything the
+  // client claims — is what actually marks the booking Paid. Also the
+  // trigger point for the customer's "booking confirmed" email; nothing
+  // else in this codebase sends that email for a Tarot booking.
   if (supabase) {
-    await supabase.from('bookings').update({
+    const { data: updated, error } = await supabase.from('bookings').update({
       payment_status: 'Paid', payment_id: razorpay_payment_id, updated_at: new Date().toISOString()
-    }).eq('id', bookingId).then(({ error }) => {
-      if (error) console.warn('[payments verify] Could not sync payment status to bookings row:', error.message);
-    });
+    }).eq('id', bookingId).select().maybeSingle();
+    if (error) {
+      console.warn('[payments verify] Could not sync payment status to bookings row:', error.message);
+    } else if (updated) {
+      sendCustomerBookingConfirmation(updated).catch(() => {});
+    }
   }
 
   res.json({ success: true });

@@ -628,8 +628,13 @@ function _clearBanner(bannerId){
   });
 })();
 
-// ── Calendly integration — Phone Tarot Reading only ──
-// Maps each Phone Tarot call duration to its dedicated Calendly event link.
+// ══════════════════════════════════════════════════════════════════
+// PHONE TAROT — CALENDLY EVENT LINKS — REPLACE WITH REAL URLS HERE ONLY
+// ══════════════════════════════════════════════════════════════════
+// This object is the single, complete configuration block for every
+// Phone Tarot Calendly event link — all six durations, nowhere else in
+// the codebase. To point Phone Tarot at real/different Calendly events,
+// edit ONLY the six URL strings below; nothing else needs to change.
 // Used exclusively by the Phone Tarot branch of tarotNext(); no other
 // reading format, service, or booking flow reads from this map.
 const PHONE_TAROT_CALENDLY_LINKS = {
@@ -1383,12 +1388,21 @@ function showConfirmation(){
     calendarEventId: '',
     status:'Booking Received', createdAt: new Date().toISOString()
   };
-  // Save to local DB as fallback
+  // Save to local DB as fallback (local-only cache for the admin UI;
+  // the live sync — see syncLiveBookingsIntoLocal — overwrites this with
+  // the backend's real payment_status on next CRM load)
   OculttDB.saveBooking(booking);
-  // Queue a local confirmation email record — matches every other booking form
-  sendBookingConfirmation(booking);
+  // NOTE: no confirmation email is sent from here. The backend is the sole
+  // authority on payment status — the customer's "booking confirmed" email
+  // is sent exclusively from the server, triggered by real Razorpay
+  // signature verification (routes/payments.js /verify) or the webhook
+  // (routes/razorpayWebhook.js payment.captured), never by the browser
+  // reaching this step.
 
-  // POST to real backend (email handled server-side after payment verify)
+  // POST to real backend — payment_status/payment_id are intentionally
+  // NOT sent here; the backend never trusts a client-supplied payment
+  // status (see routes/bookings.js) and already has the real value from
+  // /payments/verify, which ran moments ago in initiateRazorpay().
   if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1403,9 +1417,7 @@ function showConfirmation(){
       intention:     booking.intention,
       name:          booking.name,
       email:         booking.email,
-      phone:         booking.phone,
-      paymentStatus: 'Paid',
-      paymentId:     booking.razorpayPaymentId || ''
+      phone:         booking.phone
     })
   }).catch(e => console.warn('[booking POST]', e.message));
 
@@ -1477,7 +1489,7 @@ function submitSpell(){
     date:'TBC', time:'TBC', status:'Pending Review', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(spellBooking);
-  sendBookingConfirmation(spellBooking);
+  sendRequestReceivedEmail(spellBooking);
   document.getElementById('spell-form-view').style.display='none';
   document.getElementById('spell-success-view').style.display='block';
   if (btn) { btn.disabled = false; btn.textContent = 'Submit Request'; }
@@ -1532,7 +1544,7 @@ function submitGroup(){
     date: selectedGroupDate, time:'', status:'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(booking);
-  sendBookingConfirmation(booking);
+  sendRequestReceivedEmail(booking);
   if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1577,7 +1589,7 @@ function submitNum(){
     createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(booking);
-  sendBookingConfirmation(booking);
+  sendRequestReceivedEmail(booking);
   if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -5131,11 +5143,15 @@ const EmailQueue = (() => {
   return { init, enqueue, markSent, clearSent, getAll };
 })();
 
-// ── sendBookingConfirmation ───────────────────────────────────────
-// Reusable function: builds the email payload and pushes it to emailQueue.
-// Connect a real provider (Resend, SendGrid, etc.) inside this function
-// when ready — the payload object is already correctly shaped.
-function sendBookingConfirmation(booking) {
+// ── sendRequestReceivedEmail ──────────────────────────────────────
+// Used by every REQUEST-type submission (Group Magic, Numerology, Energy
+// Healing, Spell / Magic) — none of these have an online payment step,
+// so this must never claim the booking/request is "confirmed". The
+// backend (routes/sendEmail.js) hardcodes templateType 'request_received'
+// for this endpoint regardless of what's sent here, as defense in depth.
+// Tarot Reading does NOT use this — its confirmation email is sent
+// server-side only, after real Razorpay payment verification.
+function sendRequestReceivedEmail(booking) {
   var name       = booking.name      || 'Valued Client';
   var email      = booking.email     || '';
   var service    = booking.service   || '—';
@@ -5145,20 +5161,13 @@ function sendBookingConfirmation(booking) {
   var time       = booking.time      || 'TBC';
   var bookingId  = booking.id        || '—';
   var createdAt  = booking.createdAt || new Date().toISOString();
-  // Audio Tarot Reading has no live call and never gets a Google Meet link —
-  // Akanksha records and sends the reading manually. Every other booking
-  // type (Phone Tarot, Spell, Numerology, Energy Healing, Group) keeps the
-  // existing line unchanged.
-  var isAudioTarot = (pkg||'').toLowerCase().startsWith('audio');
-  var deliveryLine = isAudioTarot
-    ? 'Akankshaa will personally record your reading and send it to this email address.'
-    : 'Akankshaa will send your Google Meet link to this email address before your session.';
 
   // Human-readable plain-text body (ready to drop into any email provider)
   var bodyText = [
     'Dear ' + name + ',',
     '',
-    'Your booking with The Ocultt Tarot is confirmed.',
+    'We\u2019ve received your request with The Ocultt Tarot.',
+    'This is not yet a confirmed booking \u2014 it is pending confirmation.',
     '',
     '─────────────────────────────',
     'Booking ID  : ' + bookingId,
@@ -5169,7 +5178,7 @@ function sendBookingConfirmation(booking) {
     'Time (IST)  : ' + time,
     '─────────────────────────────',
     '',
-    deliveryLine,
+    'Akankshaa will personally review your request and follow up by email with next steps.',
     '',
     'If you have any questions, reply to this email.',
     '',
@@ -5183,7 +5192,7 @@ function sendBookingConfirmation(booking) {
     bookingId:  bookingId,
     to:         email,
     toName:     name,
-    subject:    'Your Ocultt Booking is Confirmed — ' + bookingId,
+    subject:    'Request Received — Pending Confirmation — ' + bookingId,
     service:    service,
     package:    pkg,
     duration:   duration,
@@ -5215,18 +5224,18 @@ function sendBookingConfirmation(booking) {
       })
       .then(function() {
         EmailQueue.markSent(payload.id);
-        console.log('[sendBookingConfirmation] Gmail send confirmed by backend for', payload.id);
+        console.log('[sendRequestReceivedEmail] Gmail send confirmed by backend for', payload.id);
       })
       .catch(function(err) {
         // Stays 'Queued' in the CRM so Akankshaa can see it needs attention —
-        // never silently loses a booking confirmation.
-        console.warn('[sendBookingConfirmation] Gmail send failed, booking remains queued:', err.message);
+        // never silently loses a request confirmation.
+        console.warn('[sendRequestReceivedEmail] Gmail send failed, booking remains queued:', err.message);
       });
   } else {
-    console.log('[sendBookingConfirmation] No backend connected yet — email queued locally only (see OCULTT_API).');
+    console.log('[sendRequestReceivedEmail] No backend connected yet — email queued locally only (see OCULTT_API).');
   }
 
-  console.log('[Ocultt Email] Queued confirmation for', email, '| ID:', bookingId);
+  console.log('[Ocultt Email] Queued request-received email for', email, '| ID:', bookingId);
 }
 
 // ── RENDER EMAIL QUEUE TAB ────────────────────────────────────────
@@ -5726,9 +5735,10 @@ updateAdminGreeting();
 // below are already shaped so each one is a swap-in later, not a rewrite:
 //   • Every booking already carries service/package/date/time/status/priority —
 //     the exact fields a Calendar event or Meet link would be created from.
-//   • sendBookingConfirmation() is the single choke point for outbound email —
-//     replacing its local EmailQueue.enqueue() with a real Gmail/SMTP call is
-//     a one-function change (see the FUTURE comment inside that function).
+//   • sendRequestReceivedEmail() is the choke point for request-type outbound
+//     email (Tarot's paid confirmation is sent server-side, see routes/
+//     payments.js and routes/razorpayWebhook.js) — replacing its local
+//     EmailQueue.enqueue() with a real Gmail/SMTP call is a one-function change.
 //   • apiGet/apiPost/apiPatch already centralize every network call and are
 //     gated by OCULTT_BACKEND_CONNECTED — pointing OCULTT_API at a real
 //     deploy turns them on with no call-site changes.
@@ -6384,7 +6394,7 @@ function submitEnergyHealing() {
     date: 'TBC', time: 'TBC', status:'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(ehBooking);
-  sendBookingConfirmation(ehBooking);
+  sendRequestReceivedEmail(ehBooking);
   if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

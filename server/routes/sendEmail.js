@@ -22,15 +22,24 @@ const sendEmailLimiter = rateLimit({
 });
 
 // POST /api/send-email
-// Body: the exact payload object built by sendBookingConfirmation() in
+// Body: the exact payload object built by sendRequestReceivedEmail() in
 // js/script.js — { id, bookingId, to, toName, subject, service, package,
 // duration, date, time, body, status, queuedAt, sentAt }
 //
-// Now goes through the real email queue (utils/queue.js) instead of
-// sending inline: still attempts immediate delivery (same instant-email
-// UX as before), but the attempt is now durable — a transient Resend/
-// network failure gets retried automatically instead of the email just
-// disappearing, and resubmitting the same booking id can't double-send.
+// This is a PUBLIC, unauthenticated endpoint — it must never be able to
+// send the "your booking is confirmed" email, since that would let a
+// browser claim a payment happened. templateType is therefore hardcoded
+// here, not read from the request body: this route only ever sends
+// 'request_received' (Group Magic / Numerology / Energy Healing / Spell
+// requests, none of which have an online payment step). The real
+// booking_confirmation email is sent exclusively from routes/payments.js
+// and routes/razorpayWebhook.js, after actual HMAC-verified payment.
+//
+// Goes through the real email queue (utils/queue.js): still attempts
+// immediate delivery (same instant-email UX as before), but the attempt
+// is now durable — a transient Resend/network failure gets retried
+// automatically instead of the email just disappearing, and
+// resubmitting the same booking id can't double-send.
 router.post('/send-email', sendEmailLimiter, async (req, res) => {
   console.log('[send-email] Incoming request for bookingId=%s, to=%s', req.body?.bookingId || '—', req.body?.to || '—');
 
@@ -42,10 +51,10 @@ router.post('/send-email', sendEmailLimiter, async (req, res) => {
   const payload = validation.payload;
 
   const result = await enqueueEmail({
-    templateType: 'booking_confirmation',
+    templateType: 'request_received',
     recipient: payload.to,
     payload,
-    idempotencyKey: payload.bookingId ? `booking-confirm-${payload.bookingId}` : undefined
+    idempotencyKey: payload.bookingId ? `request-received-${payload.bookingId}` : undefined
   });
 
   if (!result.ok) {

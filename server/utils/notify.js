@@ -46,9 +46,34 @@ async function sendAdminRescheduleNotification(b, oldDate, oldTime) {
   })));
 }
 
+// ── Customer-facing "your booking is confirmed" email ───────────────
+// Deliberately the ONLY path that sends this email. Called exclusively
+// from routes/payments.js (/payments/verify, after real HMAC signature
+// verification) and routes/razorpayWebhook.js (payment.captured) — never
+// from a client-supplied paymentStatus, and never for request-type
+// services (Group Magic, Numerology, Energy Healing, Spell / Magic),
+// which have no online payment step and instead get 'request_received'
+// (see js/script.js's sendRequestReceivedEmail / routes/sendEmail.js).
+// Both callers pass the same idempotencyKey so a genuine payment can
+// never trigger this twice even if verify AND the webhook both fire.
+async function sendCustomerBookingConfirmation(booking) {
+  if (!booking || !booking.email) return { ok: false, queued: false, error: 'Missing recipient' };
+  return enqueueEmail({
+    templateType: 'booking_confirmation',
+    recipient: booking.email,
+    payload: {
+      toName: booking.name, bookingId: booking.id, service: booking.service,
+      package: booking.package, duration: booking.duration,
+      date: booking.preferred_date, time: booking.preferred_time
+    },
+    idempotencyKey: `booking-confirm-${booking.id}`
+  });
+}
+
 module.exports = {
   sendAdminNewBookingNotification,
   sendAdminCancellationNotification,
   sendAdminRescheduleNotification,
+  sendCustomerBookingConfirmation,
   adminRecipients
 };

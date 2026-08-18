@@ -56,6 +56,25 @@ const TEMPLATES = {
     )
   }),
 
+  // ── Sent for every non-payment "request" submission (Group Magic,
+  // Numerology, Energy Healing, Spell / Magic) — these have no online
+  // payment step, so they must never be worded as a confirmed/paid
+  // booking. Deliberately distinct from booking_confirmation, which is
+  // ONLY ever triggered server-side after real Razorpay payment
+  // verification (see routes/payments.js /verify and routes/
+  // razorpayWebhook.js payment.captured).
+  request_received: (d) => ({
+    subject: `Request Received — ${d.service || 'Your Request'}`,
+    html: buildInternalNoticeHtml(
+      'Request Received — Pending Confirmation',
+      `Dear ${d.toName || d.name || 'Valued Client'}, we've received your ${d.service || ''}${d.package ? ' (' + d.package + ')' : ''} request. This is not yet a confirmed booking — it is pending confirmation, and Akanksha will personally review it and follow up by email with next steps.`,
+      [
+        ['Booking ID', d.bookingId], ['Service', d.service], ['Package', d.package],
+        ['Duration', d.duration], ['Date', d.date], ['Time (IST)', d.time]
+      ].filter(([, v]) => !!v)
+    )
+  }),
+
   booking_cancelled: (d) => ({
     subject: `Booking Cancelled — ${d.service || ''}`,
     html: buildInternalNoticeHtml(

@@ -38,9 +38,16 @@ router.post('/bookings', createLimiter, async (req, res) => {
     name: b.name.trim(),
     email: b.email.trim(),
     phone: b.phone || null,
-    payment_status: b.paymentStatus || 'Unpaid',
-    payment_id: b.paymentId || null,
     status: 'Booking Received'
+    // payment_status / payment_id are deliberately NOT set here — payment
+    // status is backend-authoritative only, written exclusively by
+    // /payments/verify (signature-checked) or the Razorpay webhook. A
+    // browser-supplied paymentStatus/paymentId is never trusted or
+    // written: on first insert the column defaults to 'Unpaid' (see
+    // schema.sql); on conflict (row already exists, e.g. the Tarot
+    // placeholder created at order time) omitting the field here means
+    // this upsert leaves whatever value verify/webhook already set
+    // untouched, instead of overwriting it with client input.
   };
 
   const { error } = await supabase.from('bookings').upsert(row, { onConflict: 'id' });
