@@ -1343,7 +1343,13 @@ function showConfirmation(){
     }
     return (document.getElementById('t-intent')?.value||'').trim();
   })();
-  const id    = 'OT-'+Math.floor(100000+Math.random()*900000);
+  // Reuse the SAME id used for the Razorpay order/verify/webhook (set by
+  // initiateRazorpay just before payment) instead of minting a new one here —
+  // otherwise the Supabase row created below never matches what Razorpay's
+  // notes/webhook reference, and payment.failed/payment.captured events can
+  // never find the right booking. Fallback only covers a defensive edge case
+  // (payment verified without going through initiateRazorpay as expected).
+  const id    = _pendingBookingId || ('OT-'+Math.floor(100000+Math.random()*900000));
 
   const price = selectedPriceOverride || PRICE_MAP[selectedDuration] || 'TBC';
   const isPhoneBooking = selectedReading && selectedReading.startsWith('Phone');
@@ -1572,6 +1578,11 @@ function submitNum(){
   };
   OculttDB.saveBooking(booking);
   sendBookingConfirmation(booking);
+  if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: booking.id, service: 'Numerology', package: selectedNum, name, email, phone })
+  }).catch(e => console.warn('[numerology POST]', e.message));
   document.getElementById('num-form-view').style.display='none';
   document.getElementById('num-success-view').style.display='block';
 }
@@ -2581,7 +2592,29 @@ const OculttDB = (() => {
     save(CUSTOMERS_KEY, customers);
   }
 
-  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount };
+  // ── mergeRemoteBookings — upserts bookings fetched from the live backend
+  // (Supabase, via GET /api/bookings) into local storage, so bookings made
+  // on OTHER devices/browsers become visible here too. Deliberately skips
+  // logActivity/render-triggering (unlike saveBooking) since this runs as a
+  // passive background sync from inside render functions themselves — the
+  // caller re-renders once after the merge completes instead.
+  function mergeRemoteBookings(remoteList) {
+    if (!Array.isArray(remoteList) || !remoteList.length) return;
+    const bookings = load(BOOKINGS_KEY);
+    remoteList.forEach(rb => {
+      if (!rb || !rb.id) return;
+      const idx = bookings.findIndex(b => b.id === rb.id);
+      if (idx > -1) {
+        bookings[idx] = { ...bookings[idx], ...rb };
+      } else {
+        bookings.push(rb);
+        upsertCustomer(rb);
+      }
+    });
+    save(BOOKINGS_KEY, bookings);
+  }
+
+  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount, mergeRemoteBookings };
 })();
 
 // ════════════════════════════════════════════════════════════════════
@@ -2934,11 +2967,16 @@ function _legacySetBookingsFilter(filter, el) {
   setBookingsFilter('service', filter, el);
 }
 
-function renderAdminBookings() {
+async function renderAdminBookings() {
   const tbody  = document.getElementById('bookings-tbody');
   const empty  = document.getElementById('bookings-empty');
   const sub    = document.getElementById('bookings-sub');
   if (!tbody) return;
+
+  // Best-effort sync with the live backend so bookings made on other
+  // devices/browsers show up here too — falls back to whatever's already
+  // cached locally if the live API is unreachable (see syncLiveBookingsIntoLocal).
+  await syncLiveBookingsIntoLocal();
 
   const q = (document.getElementById('booking-search')?.value || '').toLowerCase();
   let bookings = OculttDB.getBookings();
@@ -4155,11 +4193,16 @@ function closeBookingDetail() {
   refreshVisibleCrmTables();
 }
 
-function renderAdminCustomers() {
+async function renderAdminCustomers() {
   const tbody = document.getElementById('customers-tbody');
   const empty = document.getElementById('customers-empty');
   const sub   = document.getElementById('customers-sub');
   if (!tbody) return;
+
+  // Best-effort sync with the live backend — customers created on other
+  // devices/browsers are derived from their bookings, so syncing bookings
+  // (see syncLiveBookingsIntoLocal) is what brings them in here too.
+  await syncLiveBookingsIntoLocal();
 
   const q = (document.getElementById('customer-search')?.value || '').toLowerCase();
   const statusFilter = document.getElementById('customer-status-filter')?.value || '';
@@ -4438,7 +4481,12 @@ function editSessionNote(bookingId, clientName) {
   renderSessionHistory();
 }
 
-function renderDashboard() {
+async function renderDashboard() {
+  // Best-effort sync with the live backend so today's stats reflect bookings
+  // made on other devices/browsers too — falls back to local data if the
+  // live API is unreachable or this isn't an authenticated admin session.
+  await syncLiveBookingsIntoLocal();
+
   const bookings  = OculttDB.getBookings().filter(b => !b.archived);
   const customers = OculttDB.getCustomers();
   const today     = new Date().toDateString();
@@ -5280,7 +5328,7 @@ const RAZORPAY_KEY_ID = '';  // Set by server on order creation
 //
 // ⚠️ MUST be set back to false before accepting real customer payments.
 // ════════════════════════════════════════════════════════════════
-const TEST_MODE = true;
+const TEST_MODE = false;
 
 // Paise map kept for display only — server enforces actual amounts
 const PRICE_PAISE_MAP = {
@@ -5407,10 +5455,14 @@ function initiateRazorpay() {
   }
 
   // ── STEP 1: Create order server-side (amount is enforced by server) ──
+  // name/email/phone are included so the server can create a placeholder
+  // booking row under this same bookingId right away — without it, a
+  // payment.failed webhook (sent when a customer abandons checkout, i.e.
+  // showConfirmation() never runs) has no row to attach to.
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId, duration: selectedDuration, type: 'booking' })
+    body: JSON.stringify({ bookingId, duration: selectedDuration, type: 'booking', name, email, phone })
   })
   .then(r => r.json())
   .then(order => {
@@ -5716,6 +5768,43 @@ async function apiPatch(path, body) {
   if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
   const r = await fetch(OCULTT_API + path, { method:'PATCH', headers: adminHeaders(), body: JSON.stringify(body) });
   return r.json();
+}
+
+// ── Live bookings sync — pulls GET /api/bookings (Supabase, every non-spell
+// booking) into OculttDB/localStorage, so the CRM shows bookings made on
+// OTHER devices/browsers too, not just this one. Local storage remains the
+// fallback: if the live fetch fails or isn't available, whatever's already
+// cached locally is used, exactly as before. Gated on an admin key being
+// present (skips silently on public customer-facing pages, where there is
+// none) and throttled so it doesn't refire on every keystroke/filter click.
+function _mapRemoteBookingToLocal(r) {
+  return {
+    id: r.id, service: r.service, package: r.package, duration: r.duration,
+    date: r.preferred_date, time: r.preferred_time, format: r.format,
+    intention: r.intention, detail: r.detail, notes: r.notes,
+    name: r.name, email: r.email, phone: r.phone,
+    paymentStatus: r.payment_status, razorpayPaymentId: r.payment_id,
+    status: r.status, priority: r.priority,
+    meetStatus: r.meet_status, meetLink: r.meet_link,
+    calendarEventId: r.calendar_event_id, meetSummary: r.meet_summary,
+    createdAt: r.created_at, updatedAt: r.updated_at
+  };
+}
+let _lastLiveBookingsSyncAt = 0;
+const LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS = 15000;
+async function syncLiveBookingsIntoLocal() {
+  if (!OCULTT_BACKEND_CONNECTED || !getAdminKey()) return false;
+  if (Date.now() - _lastLiveBookingsSyncAt < LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS) return false;
+  try {
+    const { bookings, error } = await apiGet('/bookings');
+    if (error) throw new Error(error);
+    OculttDB.mergeRemoteBookings((bookings || []).map(_mapRemoteBookingToLocal));
+    _lastLiveBookingsSyncAt = Date.now();
+    return true;
+  } catch (err) {
+    console.warn('[syncLiveBookingsIntoLocal] live API unavailable, using local data only:', err.message);
+    return false;
+  }
 }
 
 // ── renderAdminSpells — live data from Supabase ──────────────────────

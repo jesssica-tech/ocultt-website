@@ -36,7 +36,7 @@ const _recentOrders = new Map();
 router.post('/payments/create-order', orderLimiter, async (req, res) => {
   if (!razorpayConfigured) return res.status(503).json({ error: 'Payments are not configured yet.' });
 
-  const { bookingId, duration, type } = req.body || {};
+  const { bookingId, duration, type, name, email, phone } = req.body || {};
   if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'Missing bookingId.' });
   if (type !== 'booking') return res.status(400).json({ error: 'Unsupported payment type.' });
 
@@ -55,6 +55,24 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
     const payload = { orderId: order.id, amount: order.amount, currency: order.currency, keyId: process.env.RAZORPAY_KEY_ID };
     _recentOrders.set(bookingId, payload);
     setTimeout(() => _recentOrders.delete(bookingId), 30 * 60 * 1000); // forget after 30 min
+
+    // Best-effort: create a placeholder booking row under this same bookingId
+    // right away, so the razorpay webhook (payment.failed / payment.captured)
+    // has a row to find and update even if the customer never completes
+    // checkout and the frontend never calls /payments/verify or POST
+    // /bookings. showConfirmation() later upserts this same row (same id)
+    // with the full booking details once payment actually succeeds — never
+    // blocks order creation from returning to the client.
+    if (supabase && name && email) {
+      supabase.from('bookings').upsert({
+        id: bookingId, service: 'Tarot Reading', duration,
+        name, email, phone: phone || null,
+        payment_status: 'Unpaid', status: 'Booking Received'
+      }, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.warn('[payments create-order] Could not create placeholder booking row:', error.message);
+      });
+    }
+
     res.json(payload);
   } catch (err) {
     console.error('[payments create-order]', err.message);
