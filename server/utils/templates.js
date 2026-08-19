@@ -75,6 +75,26 @@ const TEMPLATES = {
     )
   }),
 
+  // ── Spell / Magic confirmation (sent ONLY after real Razorpay payment
+  // verification — see routes/payments.js /verify, bookingType 'spell').
+  // Distinct wording from booking_confirmation because Akanksha performs
+  // the ritual herself rather than holding a live session — and the
+  // delivery window is dynamic, driven by the customer's own urgency
+  // selection (see SPELL_DELIVERY_WINDOWS in utils/notify.js) rather than
+  // a single fixed range for every request.
+  spell_confirmed: (d) => ({
+    subject: `Booking Confirmed — ${d.package || d.service || 'Your Spell'}`,
+    html: buildInternalNoticeHtml(
+      'Your Spell Request is Confirmed',
+      `Dear ${d.name || 'Valued Client'}, we've received your ${d.service || 'Spell / Magic'}` +
+      `${d.package ? ' (' + d.package + (d.price ? ' \u2013 ' + d.price : '') + ')' : ''} request.\n\n` +
+      `Your booking has been confirmed. Akanksha will personally perform the spell in the most beautiful way possible.\n\n` +
+      `We will share all the details with you within ${d.deliveryWindow || '5\u201360 days'}, depending on your selected timeline.\n\n` +
+      `Thank you for your trust! \u2728`,
+      [['Booking ID', d.bookingId], ['Service', d.service], ['Package', d.package], d.price ? ['Amount Paid', d.price] : null].filter(Boolean)
+    )
+  }),
+
   booking_cancelled: (d) => ({
     subject: `Booking Cancelled — ${d.service || ''}`,
     html: buildInternalNoticeHtml(

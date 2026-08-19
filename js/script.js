@@ -1,3 +1,13 @@
+// ── Backend API config — declared first, before anything else in this file.
+// renderDashboard() (called unconditionally on every page load, further
+// below) reads OCULTT_BACKEND_CONNECTED via syncLiveBookingsIntoLocal();
+// this must exist before that first call happens, or it throws a
+// "Cannot access before initialization" ReferenceError on every page load.
+// Values unchanged — only the declaration's position moved.
+const OCULTT_API = 'https://ocultt-website.onrender.com/api';
+// During local dev, use: const OCULTT_API = 'http://localhost:3001/api';
+const OCULTT_BACKEND_CONNECTED = !/your-backend-url/.test(OCULTT_API);
+
 let selectedReading='',selectedDuration='',selectedSpell='',selectedGroupSession='New Moon Circle',selectedGroupDate='July 2, 2026 · 8:00 PM IST',selectedNum='',selectedDay=null,selectedTime='',selectedDayLabel='';
 let tarotStep=1;
 // True only while showPage('tarot-booking') is being called to resume a Phone
@@ -363,8 +373,11 @@ function showPage(id, fromPopstate){
       // into the admin page instead of just closing the modal and
       // leaving the visitor back where they started (see
       // _completePendingAdminEntry, called from every sign-in success
-      // path below).
+      // path below). Also persisted to sessionStorage — on mobile the
+      // sign-in flow does a full-page redirect, which resets this
+      // in-memory flag, so it needs to survive the reload too.
       _pendingAdminEntry = true;
+      try { sessionStorage.setItem('ocultt_pending_admin_entry', '1'); } catch(e) {}
       if (typeof showToast === 'function') showToast('Admin sign-in required to open the dashboard.');
       if (typeof openGauthModal === 'function') openGauthModal();
     }
@@ -1497,41 +1510,187 @@ function submitSpell(){
   const intent= goalVal;  // H-08 fix: was s-intent (non-existent), now correctly reads s-goal
   const urgency = document.getElementById('s-urgency')?.value || 'No rush';
   const spellId = 'OS-SP-' + Math.floor(100000 + Math.random() * 900000);
-  const btn = document.querySelector('#spell-form-view .btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  const basePrice  = _extractPriceNumber(selectedSpell);
+  // Urgent adds up to 20% — this is a DISPLAY-ONLY calculation so the
+  // payment step can show an accurate total before checkout opens. The
+  // server (routes/payments.js) independently recomputes this same 20%
+  // from the verified base tier and never trusts this client-side number
+  // as the actual amount to charge.
+  const finalPrice = urgency === 'Urgent' ? Math.round(basePrice * 1.2) : basePrice;
 
-  // Save locally first — this is the source of truth for the CRM until the
-  // live backend is connected, matching every other booking form on the site.
-  const spellBooking = {
-    id: spellId, service:'Spell / Magic', package: selectedSpell || 'Custom',
-    price: _extractPrice(selectedSpell),
-    duration:'—', name, email, phone, intention: intent,
-    urgency, priority: urgency === 'Urgent' ? 'Urgent' : 'Normal',
-    paymentStatus: 'Unpaid',
-    date:'TBC', time:'TBC', status:'Pending Review', createdAt: new Date().toISOString()
+  // Payment now happens BEFORE the request is submitted to Akanksha —
+  // held here and only actually created (POST /spells) once Razorpay
+  // checkout succeeds, in initiateSpellRazorpay()'s handler below.
+  _pendingSpellBooking = {
+    id: spellId, service: 'Spell / Magic', package: selectedSpell || 'Custom',
+    basePrice, finalPrice, name, email, phone, intention: intent,
+    detail: (document.getElementById('s-detail')?.value || '').trim(),
+    notes:  (document.getElementById('s-notes')?.value  || '').trim(),
+    urgency, priority: urgency === 'Urgent' ? 'Urgent' : 'Normal'
   };
-  OculttDB.saveBooking(spellBooking);
-  sendRequestReceivedEmail(spellBooking);
-  document.getElementById('spell-form-view').style.display='none';
-  document.getElementById('spell-success-view').style.display='block';
-  if (btn) { btn.disabled = false; btn.textContent = 'Submit Request'; }
 
-  // Best-effort sync to the live backend — never blocks the success view above
-  if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/spells', {
+  renderSpellPaymentView();
+  document.getElementById('spell-step-spells').style.display = 'none';
+  document.getElementById('spell-payment-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Spell / Magic payment step ──────────────────────────────────────
+let _pendingSpellBooking = null;
+
+function renderSpellPaymentView(){
+  const b = _pendingSpellBooking;
+  if (!b) return;
+  const nameOnly = (b.package || '').replace(/\s*—\s*₹[\d,]+$/, '');
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setText('spell-pay-name', nameOnly || b.package || '—');
+  setText('spell-pay-urgency', b.urgency);
+  setText('spell-pay-base', '₹' + b.basePrice.toLocaleString('en-IN'));
+  const urgentRow = document.getElementById('spell-pay-urgent-row');
+  if (urgentRow) {
+    if (b.urgency === 'Urgent' && b.finalPrice > b.basePrice) {
+      urgentRow.style.display = 'flex';
+      setText('spell-pay-urgent-fee', '+ ₹' + (b.finalPrice - b.basePrice).toLocaleString('en-IN') + ' (20% urgent fee)');
+    } else {
+      urgentRow.style.display = 'none';
+    }
+  }
+  setText('spell-pay-total', '₹' + b.finalPrice.toLocaleString('en-IN'));
+  const payBtn = document.getElementById('spell-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateSpellRazorpay(); }; }
+  const statusEl = document.getElementById('spell-rzp-status-msg');
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
+}
+
+function backFromSpellPayment(){
+  document.getElementById('spell-payment-view').style.display = 'none';
+  document.getElementById('spell-step-spells').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function spellRzpSetStatus(msg, color){
+  const el = document.getElementById('spell-rzp-status-msg');
+  if (!el) return;
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
+}
+
+function finalizeSpellBooking(b, paymentId){
+  const finalBooking = {
+    id: b.id, service: 'Spell / Magic', package: b.package,
+    price: '₹' + b.finalPrice.toLocaleString('en-IN'),
+    duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
+    urgency: b.urgency, priority: b.priority,
+    paymentStatus: 'Paid', razorpayPaymentId: paymentId,
+    date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
+  };
+  OculttDB.saveBooking(finalBooking);
+  document.getElementById('spell-payment-view').style.display = 'none';
+  document.getElementById('spell-success-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  _pendingSpellBooking = null;
+}
+
+function initiateSpellRazorpay(){
+  const b = _pendingSpellBooking;
+  if (!b) return;
+  const payBtn = document.getElementById('spell-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = true; payBtn.style.opacity = '0.5'; payBtn.textContent = 'Creating order…'; }
+
+  // ── TEST MODE: simulate a successful payment without calling Razorpay ──
+  if (TEST_MODE) {
+    if (payBtn) payBtn.textContent = 'Simulating test payment…';
+    spellRzpSetStatus('TEST MODE — simulating payment, no real charge is made…', 'var(--gold)');
+    setTimeout(function(){
+      spellRzpSetStatus('✓ TEST MODE — payment simulated, booking confirmed.', 'var(--sage)');
+      setTimeout(function(){ finalizeSpellBooking(b, 'TEST-' + Math.floor(100000 + Math.random() * 900000)); }, 1200);
+    }, 900);
+    return;
+  }
+
+  // ── STEP 1: Create order server-side (amount is enforced by server —
+  // see SPELL_PRICE_TIERS_RUPEES in server/routes/payments.js) ──
+  fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id:            spellId,
-      name,
-      email,
-      phone,
-      spellCategory: selectedSpell || 'Custom',
-      urgency:       (document.getElementById('s-urgency')?.value || 'No rush'),
-      goal:          intent,
-      detail:        (document.getElementById('s-detail')?.value || '').trim(),
-      notes:         (document.getElementById('s-notes')?.value  || '').trim()
-    })
-  }).catch(e => console.warn('[submitSpell POST]', e.message));
+    body: JSON.stringify({ bookingId: b.id, type: 'spell', basePrice: b.basePrice, urgency: b.urgency, name: b.name, email: b.email, phone: b.phone })
+  })
+  .then(r => r.json())
+  .then(order => {
+    if (order.error) throw new Error(order.error);
+    if (payBtn) payBtn.textContent = 'Opening payment…';
+
+    const options = {
+      key:         order.keyId,
+      order_id:    order.orderId,
+      amount:      order.amount,
+      currency:    order.currency,
+      name:        'The Ocultt Tarot',
+      description: b.package,
+      prefill:     { name: b.name, email: b.email, contact: b.phone },
+      notes:       { spellId: b.id, urgency: b.urgency },
+      theme:       { color: '#2E8B6E' },
+      modal: {
+        ondismiss: function() {
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+          spellRzpSetStatus('Payment cancelled. Click "Pay & Confirm Booking" to try again.', 'var(--text-muted)');
+        }
+      },
+      handler: function(response) {
+        spellRzpSetStatus('Verifying payment…', 'var(--text-muted)');
+        // ── STEP 2: only now — payment already succeeded — create the
+        // actual request (this is what Akanksha sees/is notified of), then
+        // verify the signature server-side, which is what actually marks
+        // it Paid and sends the customer's real confirmation email. ──
+        fetch(OCULTT_API + '/spells', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: b.id, name: b.name, email: b.email, phone: b.phone,
+            spellCategory: b.package, urgency: b.urgency, goal: b.intention,
+            detail: b.detail, notes: b.notes
+          })
+        })
+        .then(() => fetch(OCULTT_API + '/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razorpay_order_id:   response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature:  response.razorpay_signature,
+            bookingId: b.id,
+            bookingType: 'spell'
+          })
+        }))
+        .then(r => r.json())
+        .then(result => {
+          if (!result.success) throw new Error(result.error || 'Verification failed');
+          spellRzpSetStatus('✓ Payment verified! Your booking is confirmed.', 'var(--sage)');
+          setTimeout(function(){ finalizeSpellBooking(b, response.razorpay_payment_id); }, 1200);
+        })
+        .catch(err => {
+          spellRzpSetStatus('✗ Payment verification failed: ' + err.message + '. Please contact support.', '#c0392b');
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+        });
+      }
+    };
+
+    try {
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function(response) {
+        if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateSpellRazorpay(); }; }
+        spellRzpSetStatus('✗ Payment failed: ' + (response.error.description || 'Please try again.'), '#c0392b');
+      });
+      rzp.open();
+    } catch(e) {
+      if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+      spellRzpSetStatus('Payment gateway could not be loaded. Please disable any ad-blockers and try again.', '#c0392b');
+    }
+  })
+  .catch(err => {
+    if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+    spellRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    console.error('[initiateSpellRazorpay]', err);
+  });
 }
 
 function submitGroup(){
@@ -2792,6 +2951,16 @@ function _extractPrice(pkg){
   const match = pkg.match(/₹[\d,]+/);
   return match ? match[0] : 'TBC';
 }
+// Numeric rupee value from a "Name — ₹1,555" style string — used to send
+// the base price to the server for validation (see SPELL_PRICE_TIERS_RUPEES
+// in server/routes/payments.js, which is the actual source of truth; this
+// is only for display and for what create-order sends, never trusted as
+// the final charged amount).
+function _extractPriceNumber(pkg){
+  const label = _extractPrice(pkg);
+  const digits = label.replace(/[^\d]/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+}
 
 function initials(name) {
   if (!name) return '?';
@@ -3760,6 +3929,30 @@ function advanceSpellStage(bookingId, newStage) {
 }
 
 
+// ── "✉ Send Email" quick action ── a mailto: link opens the ADMIN'S OWN
+// email client for a manual, ad-hoc message — it is not, and can never be,
+// a way to deliver an attachment (mailto: links cannot carry file
+// attachments in any browser; that's a platform limitation, not something
+// fixable in this codebase). What WAS fixable is that it previously opened
+// completely blank. It now pre-fills a subject/body with the customer's
+// name and booking context, and — if this booking already has a
+// recording link sent to it (video_url/audio_url) — includes that real
+// link in the body, so it doubles as a manual resend/follow-up option.
+// The actual, reliable way to deliver a fresh recording remains the
+// dedicated "🎥 VIDEO" / audio Send Now buttons, which send server-side.
+function buildBookingMailtoLink(b){
+  const name = b.name || 'there';
+  const service = b.service || 'your booking';
+  const subject = `The Ocultt Tarot — ${service}${b.id ? ' (' + b.id + ')' : ''}`;
+  let body = `Hi ${name},\n\n`;
+  const link = b.video_url || b.audio_url;
+  if (link) {
+    body += `Here is the link to your recording: ${link}\n(This link expires 7 days from when it was sent.)\n\n`;
+  }
+  body += `— The Ocultt Tarot`;
+  return `mailto:${b.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function openBookingDetail(bookingId) {
   const overlay = document.getElementById('booking-detail-overlay');
   const panel = document.getElementById('booking-detail-panel');
@@ -3912,7 +4105,7 @@ function openBookingDetail(bookingId) {
     <button class="cd-action-btn" onclick="${b.archived ? 'unarchiveBookingQuick' : 'archiveBookingQuick'}('${b.id}')">${b.archived ? '📤 Unarchive' : '🗄 Archive Booking'}</button>
     <button class="cd-action-btn" onclick="jumpToCustomerProfile('${(b.email||'').replace(/'/g,"\\'")}')">◈ Open Customer Profile</button>
     <button class="cd-action-btn" onclick="addInternalNoteToBooking('${b.id}')">📝 Add Internal Note</button>
-    ${b.email ? `<a class="cd-action-btn" href="mailto:${b.email}">✉ Send Email</a>` : ''}
+    ${b.email ? `<a class="cd-action-btn" href="${buildBookingMailtoLink(b)}">✉ Send Email</a>` : ''}
     ${waPhone ? `<a class="cd-action-btn" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">◈ Send WhatsApp</a>` : ''}
   `;
 
@@ -4779,10 +4972,16 @@ function isAdminUser(){
 // so they are correctly left alone — no unexpected redirect for a normal
 // visitor just signing in.
 let _pendingAdminEntry = false;
+// Restore across a mobile signInWithRedirect reload — the in-memory flag
+// above resets on every page load, but sessionStorage survives it. Only
+// meaningful until handleRedirectResult() (called below) resolves.
+try { if (sessionStorage.getItem('ocultt_pending_admin_entry') === '1') _pendingAdminEntry = true; } catch(e) {}
+
 function _completePendingAdminEntry(user){
   if (!_pendingAdminEntry) return;
   if (!user) return; // still signed out — nothing to do yet
   _pendingAdminEntry = false;
+  try { sessionStorage.removeItem('ocultt_pending_admin_entry'); } catch(e) {}
   if (isAdminUser()) {
     showPage('admin');
   } else if (typeof showToast === 'function') {
@@ -5072,6 +5271,21 @@ function gauthInit() {
       // already completed it (_completePendingAdminEntry no-ops once the
       // flag is cleared).
       _completePendingAdminEntry(user);
+    });
+
+    // Complete the mobile signInWithRedirect() flow (see
+    // OculttFirebase.signInWithGoogle) if this page load is the redirect
+    // coming back from Google. onAuthStateChanged above already handles
+    // the success case (Firebase fires it automatically once the
+    // redirect result is available), so this call exists mainly to catch
+    // and surface redirect-specific errors (e.g. an account conflict)
+    // that onAuthStateChanged alone would never report — those otherwise
+    // fail silently and just look like "still signed out".
+    window.OculttFirebase.handleRedirectResult().catch(function (err) {
+      _pendingAdminEntry = false;
+      try { sessionStorage.removeItem('ocultt_pending_admin_entry'); } catch(e) {}
+      console.error('[OculttAuth] Redirect sign-in failed:', err.code, err.message);
+      if (typeof showToast === 'function') showToast('Sign-in failed — please try again.');
     });
 
     // Pre-render the Firebase button inside the modal so it is ready
@@ -5804,15 +6018,10 @@ updateAdminGreeting();
 //     on the same timeline notes and status changes already use.
 // ══════════════════════════════════════════════════════════════════════════
 
-const OCULTT_API = 'https://ocultt-website.onrender.com/api';
-// During local dev, use: const OCULTT_API = 'http://localhost:3001/api';
-
-// Phase 1 (local-only): no live backend is deployed yet. Every caller below
-// already falls back to OculttDB (localStorage) when the API is unavailable —
-// this flag just skips the real network attempt against the placeholder URL,
-// so there's no CORS error / wasted round-trip on every booking or tab load.
-// Flip automatically the moment OCULTT_API above is pointed at a real deploy.
-const OCULTT_BACKEND_CONNECTED = !/your-backend-url/.test(OCULTT_API);
+// ── Backend API config ── moved to the top of this file (see line ~1-9) so
+// it's available before renderDashboard()'s unconditional top-level call
+// further up runs. Left this comment as a pointer in case anyone searches
+// for OCULTT_API here.
 
 // Admin key stored in sessionStorage — set on sign-in, cleared on sign-out
 function getAdminKey() { return sessionStorage.getItem('ocultt_admin_key') || ''; }
@@ -6291,13 +6500,28 @@ async function sendVideoToCustomer() {
     btn.textContent = '✓ SENT';
     setTimeout(renderAdminSpells, 500);
   } catch (err) {
-    // Backend not connected — mark as sent locally so the workflow can still be tested end-to-end
-    console.warn('[sendVideoToCustomer] live backend unavailable, marking sent locally:', err.message);
-    markSent();
-    document.getElementById('vm-send-status').style.color = '#5BB888';
-    document.getElementById('vm-send-status').textContent = '✓ Marked as sent (local test mode — connect the backend to actually email the customer).';
-    btn.textContent = '✓ SENT';
-    setTimeout(renderAdminSpells, 500);
+    // Only treat this as a safe local-test-mode fallback when there is
+    // genuinely no live backend configured at all (apiPost's own guard,
+    // thrown before any network request is even attempted). Any other
+    // error — a network failure reaching a real backend, or the backend
+    // itself reporting the send failed (bad Gmail credentials, invalid
+    // recipient, etc.) — must NOT be silently marked as sent. Doing so
+    // previously showed "✓ Sent" in the CRM while the customer received
+    // nothing, with no way to tell the two cases apart.
+    if (err.message === 'No backend connected yet — using local storage') {
+      console.warn('[sendVideoToCustomer] no live backend configured, marking sent locally (test mode):', err.message);
+      markSent();
+      document.getElementById('vm-send-status').style.color = '#5BB888';
+      document.getElementById('vm-send-status').textContent = '✓ Marked as sent (local test mode — connect the backend to actually email the customer).';
+      btn.textContent = '✓ SENT';
+      setTimeout(renderAdminSpells, 500);
+    } else {
+      console.error('[sendVideoToCustomer] send failed — NOT marking as sent:', err.message);
+      document.getElementById('vm-send-status').style.color = '#C0392B';
+      document.getElementById('vm-send-status').textContent = '✕ Send failed: ' + err.message + ' — the customer did NOT receive this. Please try again.';
+      btn.disabled = false;
+      btn.textContent = '✉ RETRY SEND';
+    }
   }
 }
 

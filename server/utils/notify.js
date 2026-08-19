@@ -70,10 +70,37 @@ async function sendCustomerBookingConfirmation(booking) {
   });
 }
 
+// ── Spell / Magic "your booking is confirmed" email ──────────────────
+// Called exclusively from routes/payments.js (/payments/verify, after
+// real HMAC signature verification, bookingType === 'spell') — mirrors
+// sendCustomerBookingConfirmation's trust model exactly, just with
+// spell-specific wording (Akanksha performs the ritual herself; there's
+// no live session to attend) and a dynamic delivery window driven by
+// the customer's own urgency selection rather than one fixed range.
+const SPELL_DELIVERY_WINDOWS = {
+  'Urgent':         'the same day to 2 days',
+  'Within a month': '5\u201330 days',
+  'No rush':        '5\u201360 days'
+};
+async function sendSpellBookingConfirmation(booking) {
+  if (!booking || !booking.email) return { ok: false, queued: false, error: 'Missing recipient' };
+  return enqueueEmail({
+    templateType: 'spell_confirmed',
+    recipient: booking.email,
+    payload: {
+      name: booking.name, bookingId: booking.id, service: booking.service,
+      package: booking.package, price: booking.priceLabel,
+      deliveryWindow: SPELL_DELIVERY_WINDOWS[booking.urgency] || SPELL_DELIVERY_WINDOWS['No rush']
+    },
+    idempotencyKey: `spell-confirm-${booking.id}`
+  });
+}
+
 module.exports = {
   sendAdminNewBookingNotification,
   sendAdminCancellationNotification,
   sendAdminRescheduleNotification,
   sendCustomerBookingConfirmation,
+  sendSpellBookingConfirmation,
   adminRecipients
 };

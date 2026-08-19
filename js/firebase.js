@@ -118,6 +118,26 @@
   _provider.setCustomParameters({ prompt: 'select_account' });
 
   /* ─────────────────────────────────────────────────────────────────────
+     SECTION 3b — MOBILE DETECTION (popup vs redirect)
+     ─────────────────────────────────────────────────────────────────────
+     signInWithPopup() is unreliable on mobile web browsers: iOS Safari's
+     Intelligent Tracking Prevention and Chrome's third-party-storage
+     partitioning can let the Google popup complete sign-in successfully
+     while preventing that auth state from ever reaching the opener
+     window/tab — the popup closes, but the site never sees a signed-in
+     user. This is a known Firebase limitation (not specific to this
+     codebase), and Firebase's own guidance is to use signInWithRedirect
+     on mobile instead, which navigates the whole tab through Google's
+     login flow rather than depending on cross-window communication.
+     Desktop keeps the existing popup flow (no page navigation, smoother).
+     ───────────────────────────────────────────────────────────────────── */
+  function _isMobileBrowser() {
+    return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent || ''
+    );
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────
      SECTION 5 — LOCALSTORAGE KEY
      Must match GAUTH_STORAGE_KEY in script.js (currently 'ocultt_user_v1')
      so both files read/write the same object.
@@ -190,20 +210,48 @@
   window.OculttFirebase = {
 
     /* ── signInWithGoogle ────────────────────────────────────────────
-       Trigger the Google popup sign-in flow.
-       Returns a Promise that resolves with { uid, name, email, picture }
-       on success, or rejects with a Firebase AuthError on failure.
+       Trigger Google sign-in. Uses a popup on desktop (no page
+       navigation), and a full-page redirect on mobile browsers, where
+       popup-based auth is known to be unreliable (see _isMobileBrowser
+       above). On mobile this returns a Promise that resolves once the
+       redirect navigation has started — NOT with a signed-in user, since
+       the page is about to unload. The actual sign-in completes after
+       Google redirects back here; call handleRedirectResult() once on
+       page load to pick that up (script.js does this alongside gauthInit).
 
        Called by script.js when the "Continue with Google" button is
        clicked inside the "Enter the Sanctum" modal.
        ──────────────────────────────────────────────────────────────── */
     signInWithGoogle: function () {
+      if (_isMobileBrowser()) {
+        return _auth.signInWithRedirect(_provider);
+        // Tab navigates to accounts.google.com now — nothing after this
+        // point runs until the redirect back, handled by
+        // handleRedirectResult() below.
+      }
       return _auth.signInWithPopup(_provider).then(function (result) {
         var user = _normaliseUser(result.user);
         _persist(user);
         _syncUserToBackend(result.user);
         return user;
         // Errors propagate to the caller in script.js for UI handling
+      });
+    },
+
+    /* ── handleRedirectResult ───────────────────────────────────────
+       Completes the mobile signInWithRedirect() flow above. Safe to call
+       unconditionally on every page load: if the user didn't just come
+       back from a Google redirect, Firebase resolves this with
+       { user: null } and it's a harmless no-op. Returns a Promise
+       resolving with the normalised user (or null).
+       ──────────────────────────────────────────────────────────────── */
+    handleRedirectResult: function () {
+      return _auth.getRedirectResult().then(function (result) {
+        if (!result || !result.user) return null;
+        var user = _normaliseUser(result.user);
+        _persist(user);
+        _syncUserToBackend(result.user);
+        return user;
       });
     },
 
