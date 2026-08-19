@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const Razorpay = require('razorpay');
 const { supabase } = require('../db');
-const { sendCustomerBookingConfirmation, sendSpellBookingConfirmation } = require('../utils/notify');
+const { sendCustomerBookingConfirmation, sendSpellBookingConfirmation, sendEnergyHealingConfirmation, sendNumerologyConfirmation } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -22,7 +22,22 @@ const TAROT_PRICE_PAISE = {
   '20 Min': 122200,
   '30 Min': 155500,
   '45 Min': 188800,
-  '60 Min': 255500
+  '60 Min': 255500,
+  // Audio Tarot Reading is priced by number of questions, not minutes —
+  // selectedDuration is null for these (see handleAudioReadingSelect in
+  // js/script.js), so the frontend sends selectedReading itself (e.g.
+  // "Audio — 2 Questions") as the price-lookup key instead. This table
+  // never had these entries at all, so every Audio Tarot checkout was
+  // rejected with "Unknown or unsupported duration" — misreported to the
+  // customer as "Could not connect to payment server" by the frontend's
+  // generic catch-all (see the fix in initiateRazorpay() in js/script.js).
+  // Values mirror the real prices shown in the Number of Questions dropdown.
+  'Audio — 1 Question':  49900,
+  'Audio — 2 Questions': 59900,
+  'Audio — 3 Questions': 69900,
+  'Audio — 4 Questions': 79900,
+  'Audio — 5 Questions': 89900,
+  'Audio — 6 Questions': 99900
 };
 
 // ── Spell / Magic price enforcement ── same principle as above: NEVER
@@ -37,8 +52,13 @@ const TAROT_PRICE_PAISE = {
 // invent a lower one) without a second copy of the whole spell catalog to
 // maintain. Update this list if new price tiers are ever introduced.
 const SPELL_PRICE_TIERS_RUPEES = new Set([1555, 1666, 1888, 1999, 2222, 2999, 4444, 5555, 6666, 8888]);
-// "Urgent" adds up to 20% — computed here server-side from the verified
-// base tier above, never from a client-sent final total.
+// Energy Healing / Numerology — same principle: trust only a known,
+// published price value, never a client-computed final amount. Neither
+// has an urgency/multiplier option, so the base tier IS the final price.
+const ENERGY_HEALING_PRICE_TIERS_RUPEES = new Set([555, 599, 666, 777, 899, 1199, 1650]);
+const NUMEROLOGY_PRICE_TIERS_RUPEES = new Set([2222, 5555]);
+// "Urgent" (Spell only) adds up to 20% — computed here server-side from
+// the verified base tier above, never from a client-sent final total.
 const URGENT_MULTIPLIER = 1.2;
 
 const razorpayConfigured = !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
@@ -63,20 +83,30 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
 
   const { bookingId, duration, type, name, email, phone, basePrice, urgency } = req.body || {};
   if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'Missing bookingId.' });
-  if (type !== 'booking' && type !== 'spell') return res.status(400).json({ error: 'Unsupported payment type.' });
+  if (type !== 'booking' && type !== 'spell' && type !== 'energy_healing' && type !== 'numerology') {
+    return res.status(400).json({ error: 'Unsupported payment type.' });
+  }
 
   let amount;
   if (type === 'booking') {
     amount = TAROT_PRICE_PAISE[duration];
     if (!amount) return res.status(400).json({ error: 'Unknown or unsupported duration — cannot price this booking.' });
-  } else {
-    // type === 'spell'
+  } else if (type === 'spell') {
     const base = Number(basePrice);
     if (!SPELL_PRICE_TIERS_RUPEES.has(base)) {
       return res.status(400).json({ error: 'Unknown or unsupported spell price — cannot price this booking.' });
     }
     const finalRupees = urgency === 'Urgent' ? Math.round(base * URGENT_MULTIPLIER) : base;
     amount = finalRupees * 100;
+  } else {
+    // type === 'energy_healing' | 'numerology' — no urgency option on
+    // either form, so the base tier IS the final price.
+    const base = Number(basePrice);
+    const tiers = type === 'energy_healing' ? ENERGY_HEALING_PRICE_TIERS_RUPEES : NUMEROLOGY_PRICE_TIERS_RUPEES;
+    if (!tiers.has(base)) {
+      return res.status(400).json({ error: 'Unknown or unsupported price — cannot price this booking.' });
+    }
+    amount = base * 100;
   }
 
   if (_recentOrders.has(bookingId)) {
@@ -169,6 +199,18 @@ router.post('/payments/verify', async (req, res) => {
           console.warn('[payments verify] Could not fetch order for price label:', e.message);
         }
         sendSpellBookingConfirmation({ ...updated, priceLabel }).catch(() => {});
+      } else if (bookingType === 'energy_healing' || bookingType === 'numerology') {
+        let priceLabel = null;
+        try {
+          const order = await razorpay.orders.fetch(razorpay_order_id);
+          if (order && typeof order.amount === 'number') {
+            priceLabel = '\u20b9' + (order.amount / 100).toLocaleString('en-IN');
+          }
+        } catch (e) {
+          console.warn('[payments verify] Could not fetch order for price label:', e.message);
+        }
+        const sender = bookingType === 'energy_healing' ? sendEnergyHealingConfirmation : sendNumerologyConfirmation;
+        sender({ ...updated, priceLabel }).catch(() => {});
       } else {
         sendCustomerBookingConfirmation(updated).catch(() => {});
       }

@@ -1760,24 +1760,153 @@ function submitNum(){
     if(firstErr)firstErr.scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
-  const booking = {
-    id:'ON-'+Math.floor(100000+Math.random()*900000),
-    service:'Numerology', package:selectedNum,
-    price: _extractPrice(selectedNum),
-    duration:'—', name, email, phone, dob, intention:'',
-    paymentStatus: 'Unpaid', priority: 'Normal',
-    date:'TBC', time:'TBC', status:'Booking Received',
-    createdAt: new Date().toISOString()
+  const id = 'ON-' + Math.floor(100000 + Math.random() * 900000);
+  const basePrice = _extractPriceNumber(selectedNum);
+  _pendingNumBooking = { id, service: 'Numerology', package: selectedNum, basePrice, name, email, phone, dob };
+
+  renderNumPaymentView();
+  document.getElementById('num-form-view').style.display = 'none';
+  document.getElementById('num-payment-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Numerology payment step ─────────────────────────────────────────
+let _pendingNumBooking = null;
+
+function renderNumPaymentView(){
+  const b = _pendingNumBooking;
+  if (!b) return;
+  const nameOnly = (b.package || '').replace(/\s*—\s*₹[\d,]+$/, '');
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setText('num-pay-name', nameOnly || b.package || '—');
+  setText('num-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  const payBtn = document.getElementById('num-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateNumRazorpay(); }; }
+  const statusEl = document.getElementById('num-rzp-status-msg');
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
+}
+
+function backFromNumPayment(){
+  document.getElementById('num-payment-view').style.display = 'none';
+  document.getElementById('num-form-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function numRzpSetStatus(msg, color){
+  const el = document.getElementById('num-rzp-status-msg');
+  if (!el) return;
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
+}
+
+function finalizeNumBooking(b, paymentId){
+  const finalBooking = {
+    id: b.id, service: 'Numerology', package: b.package,
+    price: '₹' + b.basePrice.toLocaleString('en-IN'),
+    duration: '—', name: b.name, email: b.email, phone: b.phone, dob: b.dob, intention: '',
+    paymentStatus: 'Paid', razorpayPaymentId: paymentId,
+    date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
   };
-  OculttDB.saveBooking(booking);
-  sendRequestReceivedEmail(booking);
-  if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
+  OculttDB.saveBooking(finalBooking);
+  document.getElementById('num-payment-view').style.display = 'none';
+  document.getElementById('num-success-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  _pendingNumBooking = null;
+}
+
+function initiateNumRazorpay(){
+  const b = _pendingNumBooking;
+  if (!b) return;
+  const payBtn = document.getElementById('num-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = true; payBtn.style.opacity = '0.5'; payBtn.textContent = 'Creating order…'; }
+
+  if (TEST_MODE) {
+    if (payBtn) payBtn.textContent = 'Simulating test payment…';
+    numRzpSetStatus('TEST MODE — simulating payment, no real charge is made…', 'var(--gold)');
+    setTimeout(function(){
+      numRzpSetStatus('✓ TEST MODE — payment simulated, booking confirmed.', 'var(--sage)');
+      setTimeout(function(){ finalizeNumBooking(b, 'TEST-' + Math.floor(100000 + Math.random() * 900000)); }, 1200);
+    }, 900);
+    return;
+  }
+
+  fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: booking.id, service: 'Numerology', package: selectedNum, name, email, phone })
-  }).catch(e => console.warn('[numerology POST]', e.message));
-  document.getElementById('num-form-view').style.display='none';
-  document.getElementById('num-success-view').style.display='block';
+    body: JSON.stringify({ bookingId: b.id, type: 'numerology', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
+  })
+  .then(r => r.json())
+  .then(order => {
+    if (order.error) throw { ocultOrderError: true, message: order.error };
+    if (payBtn) payBtn.textContent = 'Opening payment…';
+
+    const options = {
+      key:         order.keyId,
+      order_id:    order.orderId,
+      amount:      order.amount,
+      currency:    order.currency,
+      name:        'The Ocultt Tarot',
+      description: b.package,
+      prefill:     { name: b.name, email: b.email, contact: b.phone },
+      notes:       { numId: b.id },
+      theme:       { color: '#2E8B6E' },
+      modal: {
+        ondismiss: function() {
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+          numRzpSetStatus('Payment cancelled. Click "Pay & Confirm Booking" to try again.', 'var(--text-muted)');
+        }
+      },
+      handler: function(response) {
+        numRzpSetStatus('Verifying payment…', 'var(--text-muted)');
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Numerology', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.dob ? ('DOB: ' + b.dob) : null })
+        })
+        .then(() => fetch(OCULTT_API + '/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razorpay_order_id:   response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature:  response.razorpay_signature,
+            bookingId: b.id,
+            bookingType: 'numerology'
+          })
+        }))
+        .then(r => r.json())
+        .then(result => {
+          if (!result.success) throw new Error(result.error || 'Verification failed');
+          numRzpSetStatus('✓ Payment verified! Your booking is confirmed.', 'var(--sage)');
+          setTimeout(function(){ finalizeNumBooking(b, response.razorpay_payment_id); }, 1200);
+        })
+        .catch(err => {
+          numRzpSetStatus('✗ Payment verification failed: ' + err.message + '. Please contact support.', '#c0392b');
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+        });
+      }
+    };
+
+    try {
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function(response) {
+        if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateNumRazorpay(); }; }
+        numRzpSetStatus('✗ Payment failed: ' + (response.error.description || 'Please try again.'), '#c0392b');
+      });
+      rzp.open();
+    } catch(e) {
+      if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+      numRzpSetStatus('Payment gateway could not be loaded. Please disable any ad-blockers and try again.', '#c0392b');
+    }
+  })
+  .catch(err => {
+    if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+    if (err && err.ocultOrderError) {
+      numRzpSetStatus('✗ ' + err.message, '#c0392b');
+    } else {
+      numRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    }
+    console.error('[initiateNumRazorpay]', err);
+  });
 }
 
 function showAdminTab(id,el){
@@ -5739,14 +5868,20 @@ function initiateRazorpay() {
   // booking row under this same bookingId right away — without it, a
   // payment.failed webhook (sent when a customer abandons checkout, i.e.
   // showConfirmation() never runs) has no row to attach to.
+  // Audio Tarot Reading has no minute-based selectedDuration (it's priced
+  // by number of questions instead — see handleAudioReadingSelect, which
+  // leaves selectedDuration null) — send selectedReading itself
+  // ("Audio — 2 Questions") as the price-lookup key in that case, matching
+  // the new Audio entries in TAROT_PRICE_PAISE server-side.
+  const priceKey = isAudioReading ? selectedReading : selectedDuration;
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId, duration: selectedDuration, type: 'booking', name, email, phone })
+    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone })
   })
   .then(r => r.json())
   .then(order => {
-    if (order.error) throw new Error(order.error);
+    if (order.error) throw { ocultOrderError: true, message: order.error };
 
     if (payBtn) { payBtn.textContent = 'Opening payment…'; }
 
@@ -5813,7 +5948,17 @@ function initiateRazorpay() {
   })
   .catch(err => {
     if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
-    rzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    // Distinguish a genuine network/connection failure (fetch itself
+    // rejected) from the server responding but declining to price this
+    // booking (order.error, tagged above) — these were previously shown
+    // as the same generic "Could not connect" message, which hid real
+    // problems (like Audio Tarot Reading's missing price entries) behind
+    // a misleading network-sounding error.
+    if (err && err.ocultOrderError) {
+      rzpSetStatus('✗ ' + err.message, '#c0392b');
+    } else {
+      rzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    }
     console.error('[initiateRazorpay]', err);
   });
 }
@@ -6667,22 +6812,152 @@ function submitEnergyHealing() {
   }
 
   const id = 'OEH-' + Math.floor(100000 + Math.random() * 900000);
-  const ehBooking = {
-    id, service: 'Energy Healing', package: service,
-    price: _extractPrice(service),
-    duration: '—', name, email, phone, intention: intent,
-    paymentStatus: 'Unpaid', priority: 'Normal',
-    date: 'TBC', time: 'TBC', status:'Booking Received', createdAt: new Date().toISOString()
+  const basePrice = _extractPriceNumber(service);
+  _pendingEHBooking = { id, service: 'Energy Healing', package: service, basePrice, name, email, phone, intention: intent };
+
+  renderEHPaymentView();
+  document.getElementById('eh-form-view').style.display = 'none';
+  document.getElementById('eh-payment-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Energy Healing payment step ─────────────────────────────────────
+let _pendingEHBooking = null;
+
+function renderEHPaymentView(){
+  const b = _pendingEHBooking;
+  if (!b) return;
+  const nameOnly = (b.package || '').replace(/\s*—\s*₹[\d,]+$/, '');
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setText('eh-pay-name', nameOnly || b.package || '—');
+  setText('eh-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  const payBtn = document.getElementById('eh-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateEHRazorpay(); }; }
+  const statusEl = document.getElementById('eh-rzp-status-msg');
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
+}
+
+function backFromEHPayment(){
+  document.getElementById('eh-payment-view').style.display = 'none';
+  document.getElementById('eh-form-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function ehRzpSetStatus(msg, color){
+  const el = document.getElementById('eh-rzp-status-msg');
+  if (!el) return;
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
+}
+
+function finalizeEHBooking(b, paymentId){
+  const finalBooking = {
+    id: b.id, service: 'Energy Healing', package: b.package,
+    price: '₹' + b.basePrice.toLocaleString('en-IN'),
+    duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
+    paymentStatus: 'Paid', razorpayPaymentId: paymentId,
+    date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
   };
-  OculttDB.saveBooking(ehBooking);
-  sendRequestReceivedEmail(ehBooking);
-  if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
+  OculttDB.saveBooking(finalBooking);
+  document.getElementById('eh-payment-view').style.display = 'none';
+  document.getElementById('eh-success-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  _pendingEHBooking = null;
+}
+
+function initiateEHRazorpay(){
+  const b = _pendingEHBooking;
+  if (!b) return;
+  const payBtn = document.getElementById('eh-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = true; payBtn.style.opacity = '0.5'; payBtn.textContent = 'Creating order…'; }
+
+  if (TEST_MODE) {
+    if (payBtn) payBtn.textContent = 'Simulating test payment…';
+    ehRzpSetStatus('TEST MODE — simulating payment, no real charge is made…', 'var(--gold)');
+    setTimeout(function(){
+      ehRzpSetStatus('✓ TEST MODE — payment simulated, booking confirmed.', 'var(--sage)');
+      setTimeout(function(){ finalizeEHBooking(b, 'TEST-' + Math.floor(100000 + Math.random() * 900000)); }, 1200);
+    }, 900);
+    return;
+  }
+
+  fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, service: 'Energy Healing', package: service, name, email, phone, intention: intent })
-  }).catch(e => console.warn('[energy POST]', e.message));
-  document.getElementById('eh-form-view').style.display = 'none';
-  document.getElementById('eh-success-view').style.display = 'block';
+    body: JSON.stringify({ bookingId: b.id, type: 'energy_healing', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
+  })
+  .then(r => r.json())
+  .then(order => {
+    if (order.error) throw { ocultOrderError: true, message: order.error };
+    if (payBtn) payBtn.textContent = 'Opening payment…';
+
+    const options = {
+      key:         order.keyId,
+      order_id:    order.orderId,
+      amount:      order.amount,
+      currency:    order.currency,
+      name:        'The Ocultt Tarot',
+      description: b.package,
+      prefill:     { name: b.name, email: b.email, contact: b.phone },
+      notes:       { ehId: b.id },
+      theme:       { color: '#2E8B6E' },
+      modal: {
+        ondismiss: function() {
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+          ehRzpSetStatus('Payment cancelled. Click "Pay & Confirm Booking" to try again.', 'var(--text-muted)');
+        }
+      },
+      handler: function(response) {
+        ehRzpSetStatus('Verifying payment…', 'var(--text-muted)');
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Energy Healing', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.intention })
+        })
+        .then(() => fetch(OCULTT_API + '/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razorpay_order_id:   response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature:  response.razorpay_signature,
+            bookingId: b.id,
+            bookingType: 'energy_healing'
+          })
+        }))
+        .then(r => r.json())
+        .then(result => {
+          if (!result.success) throw new Error(result.error || 'Verification failed');
+          ehRzpSetStatus('✓ Payment verified! Your booking is confirmed.', 'var(--sage)');
+          setTimeout(function(){ finalizeEHBooking(b, response.razorpay_payment_id); }, 1200);
+        })
+        .catch(err => {
+          ehRzpSetStatus('✗ Payment verification failed: ' + err.message + '. Please contact support.', '#c0392b');
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+        });
+      }
+    };
+
+    try {
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function(response) {
+        if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateEHRazorpay(); }; }
+        ehRzpSetStatus('✗ Payment failed: ' + (response.error.description || 'Please try again.'), '#c0392b');
+      });
+      rzp.open();
+    } catch(e) {
+      if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+      ehRzpSetStatus('Payment gateway could not be loaded. Please disable any ad-blockers and try again.', '#c0392b');
+    }
+  })
+  .catch(err => {
+    if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
+    if (err && err.ocultOrderError) {
+      ehRzpSetStatus('✗ ' + err.message, '#c0392b');
+    } else {
+      ehRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    }
+    console.error('[initiateEHRazorpay]', err);
+  });
 }
 // ── 100-WORD LIMIT: customer-facing intention / goal / question / notes fields ──
 // Applies consistently across every booking form (Tarot, Spell, Group Magic,

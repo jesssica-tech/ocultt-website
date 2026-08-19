@@ -96,11 +96,37 @@ async function sendSpellBookingConfirmation(booking) {
   });
 }
 
+// ── Energy Healing / Numerology "your booking is confirmed" emails ───
+// Same trust model as the two above: called exclusively from
+// routes/payments.js (/payments/verify, after real HMAC verification,
+// bookingType 'energy_healing' / 'numerology').
+async function sendEnergyHealingConfirmation(booking) {
+  if (!booking || !booking.email) return { ok: false, queued: false, error: 'Missing recipient' };
+  return enqueueEmail({
+    templateType: 'energy_healing_confirmed',
+    recipient: booking.email,
+    payload: { name: booking.name, bookingId: booking.id, package: booking.package, price: booking.priceLabel },
+    idempotencyKey: `eh-confirm-${booking.id}`
+  });
+}
+
+async function sendNumerologyConfirmation(booking) {
+  if (!booking || !booking.email) return { ok: false, queued: false, error: 'Missing recipient' };
+  return enqueueEmail({
+    templateType: 'numerology_confirmed',
+    recipient: booking.email,
+    payload: { name: booking.name, bookingId: booking.id, package: booking.package, price: booking.priceLabel },
+    idempotencyKey: `numerology-confirm-${booking.id}`
+  });
+}
+
 module.exports = {
   sendAdminNewBookingNotification,
   sendAdminCancellationNotification,
   sendAdminRescheduleNotification,
   sendCustomerBookingConfirmation,
   sendSpellBookingConfirmation,
+  sendEnergyHealingConfirmation,
+  sendNumerologyConfirmation,
   adminRecipients
 };

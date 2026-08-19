@@ -1484,14 +1484,35 @@
       </div>
       <div class="step-error-banner" id="num-error"></div>
       <div class="form-nav">
-        <button class="btn-primary" onclick="submitNum()">Request My Reading →</button>
+        <button class="btn-primary" onclick="submitNum()">Continue to Payment →</button>
+      </div>
+    </div>
+    <div id="num-payment-view" style="display:none">
+      <div class="form-card">
+        <h2>◇ Secure Payment</h2>
+        <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.22em;color:var(--gold);text-transform:uppercase;margin-bottom:1rem">Complete Payment</p>
+        <div class="detail-row"><span class="detail-label">Report</span><span class="detail-value" id="num-pay-name">—</span></div>
+        <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
+          <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
+          <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="num-pay-total">—</span>
+        </div>
+        <div class="payment-badge">
+          <span>✓ SSL Secured</span>
+          <span>₹ INR</span>
+          <span>◇ UPI · Cards · Net Banking</span>
+        </div>
+        <p id="num-rzp-status-msg" style="display:none;margin-top:1.5rem;font-style:italic;font-size:0.85rem"></p>
+      </div>
+      <div class="form-nav" style="margin-top:1.5rem">
+        <button class="btn-secondary" onclick="backFromNumPayment()">← Back</button>
+        <button class="btn-primary" onclick="initiateNumRazorpay()" id="num-rzp-pay-btn">Pay &amp; Confirm Booking →</button>
       </div>
     </div>
     <div id="num-success-view" style="display:none">
       <div class="success-message">
         <span class="icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="24,6 27,18 40,18 30,26 33,38 24,31 15,38 18,26 8,18 21,18" stroke="var(--gold)" stroke-width="1.4" fill="none"/><circle cx="24" cy="24" r="5" stroke="var(--gold)" stroke-width="0.8" fill="none" opacity="0.6"/></svg></span>
-        <h2>Request Received</h2>
-        <p>Akankshaa has received your numerology request. Your personalised report will be prepared with deep care and delivered to your email within 3–5 business days.</p>
+        <h2>Booking Confirmed</h2>
+        <p>Akankshaa has received your numerology request and your payment is confirmed. Your personalised report will be prepared with deep care and delivered to your email within 3–5 business days.</p>
         <p style="margin-top:1.5rem;color:var(--text-dim);font-size:0.85rem">The numbers are already speaking. Prepare to receive what they reveal.</p>
         <button class="btn-primary" onclick="showPage('home')" style="margin-top:2rem">Return Home</button>
       </div>
@@ -1583,16 +1604,38 @@
       </div>
       <div class="step-error-banner" id="eh-error"></div>
       <div class="form-nav" style="margin-top:1.5rem">
-        <button class="btn-primary" onclick="submitEnergyHealing()">Submit Request →</button>
+        <button class="btn-primary" onclick="submitEnergyHealing()">Continue to Payment →</button>
       </div>
     </div>
+    </div>
+
+    <div id="eh-payment-view" style="display:none">
+      <div class="form-card">
+        <h2>◇ Secure Payment</h2>
+        <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.22em;color:var(--gold);text-transform:uppercase;margin-bottom:1rem">Complete Payment</p>
+        <div class="detail-row"><span class="detail-label">Service</span><span class="detail-value" id="eh-pay-name">—</span></div>
+        <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
+          <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
+          <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="eh-pay-total">—</span>
+        </div>
+        <div class="payment-badge">
+          <span>✓ SSL Secured</span>
+          <span>₹ INR</span>
+          <span>◇ UPI · Cards · Net Banking</span>
+        </div>
+        <p id="eh-rzp-status-msg" style="display:none;margin-top:1.5rem;font-style:italic;font-size:0.85rem"></p>
+      </div>
+      <div class="form-nav" style="margin-top:1.5rem">
+        <button class="btn-secondary" onclick="backFromEHPayment()">← Back</button>
+        <button class="btn-primary" onclick="initiateEHRazorpay()" id="eh-rzp-pay-btn">Pay &amp; Confirm Booking →</button>
+      </div>
     </div>
 
     <div id="eh-success-view" style="display:none">
       <div class="success-message">
         <span class="icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="10" stroke="var(--gold)" stroke-width="1.5" fill="none"/><path d="M24 4v6M24 38v6M4 24h6M38 24h6M9.5 9.5l4.2 4.2M34.3 34.3l4.2 4.2M9.5 38.5l4.2-4.2M34.3 13.7l4.2-4.2" stroke="var(--gold)" stroke-width="1.3" stroke-linecap="round"/></svg></span>
-        <h2>Your Request Has Been Received</h2>
-        <p>Thank you for trusting Akankshaa with your energy healing session. She will review your intention personally and reach out within 24–48 hours to confirm your session details.</p>
+        <h2>Booking Confirmed</h2>
+        <p>Thank you for trusting Akankshaa with your energy healing session. Your payment is confirmed — she will personally review your intention and reach out within 24–48 hours with your session details.</p>
         <p style="margin-top:1.5rem;color:var(--text-dim);font-size:0.85rem">Check your email for a confirmation. In the meantime, take a few quiet moments for yourself — the energy is already beginning to shift.</p>
         <button class="btn-primary" onclick="showPage('home')" style="margin-top:2rem">Return Home</button>
       </div>

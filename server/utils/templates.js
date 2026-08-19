@@ -95,6 +95,37 @@ const TEMPLATES = {
     )
   }),
 
+  // ── Energy Healing / Numerology confirmations — sent ONLY after real
+  // Razorpay payment verification (routes/payments.js /verify, bookingType
+  // 'energy_healing' / 'numerology'). No specific copy was provided for
+  // these two (unlike Spell), so this reuses the same confirmed-and-
+  // trustworthy tone, grounded in timelines already stated elsewhere on
+  // the site (Energy Healing's existing 24–48hr follow-up copy, and
+  // Numerology's existing "delivered within 3–5 business days" copy).
+  energy_healing_confirmed: (d) => ({
+    subject: `Booking Confirmed — ${d.package || 'Energy Healing'}`,
+    html: buildInternalNoticeHtml(
+      'Your Energy Healing Booking is Confirmed',
+      `Dear ${d.name || 'Valued Client'}, we've received your Energy Healing` +
+      `${d.package ? ' (' + d.package + ')' : ''} booking.\n\n` +
+      `Your payment has been confirmed. Akanksha will personally review your request and reach out within 24\u201348 hours with your session details.\n\n` +
+      `Thank you for your trust! \u2728`,
+      [['Booking ID', d.bookingId], ['Service', 'Energy Healing'], ['Package', d.package], d.price ? ['Amount Paid', d.price] : null].filter(Boolean)
+    )
+  }),
+
+  numerology_confirmed: (d) => ({
+    subject: `Booking Confirmed — ${d.package || 'Numerology'}`,
+    html: buildInternalNoticeHtml(
+      'Your Numerology Booking is Confirmed',
+      `Dear ${d.name || 'Valued Client'}, we've received your Numerology` +
+      `${d.package ? ' (' + d.package + ')' : ''} request.\n\n` +
+      `Your payment has been confirmed. Akanksha will personally prepare your report and deliver it to your email within 3\u20135 business days.\n\n` +
+      `Thank you for your trust! \u2728`,
+      [['Booking ID', d.bookingId], ['Service', 'Numerology'], ['Package', d.package], d.price ? ['Amount Paid', d.price] : null].filter(Boolean)
+    )
+  }),
+
   booking_cancelled: (d) => ({
     subject: `Booking Cancelled — ${d.service || ''}`,
     html: buildInternalNoticeHtml(
