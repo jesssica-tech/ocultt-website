@@ -1632,7 +1632,7 @@ function initiateSpellRazorpay(){
   })
   .then(r => r.json())
   .then(order => {
-    if (order.error) throw new Error(order.error);
+    if (order.error) throw { ocultOrderError: true, message: order.error };
     if (payBtn) payBtn.textContent = 'Opening payment…';
 
     const options = {
@@ -1704,7 +1704,11 @@ function initiateSpellRazorpay(){
   })
   .catch(err => {
     if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; }
-    spellRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    if (err && err.ocultOrderError) {
+      spellRzpSetStatus('✗ ' + err.message, '#c0392b');
+    } else {
+      spellRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    }
     console.error('[initiateSpellRazorpay]', err);
   });
 }
@@ -1737,9 +1741,11 @@ function submitGroup(){
   const nameEl  = document.getElementById('g-name');
   const emailEl = document.getElementById('g-email');
   const phoneEl = document.getElementById('g-phone');
+  const notesEl = document.getElementById('g-notes');
   const name    = (nameEl?.value||'').trim();
   const email   = (emailEl?.value||'').trim();
   const phone   = (phoneEl?.value||'').trim();
+  const notes   = (notesEl?.value||'').trim();
   ['g-name','g-email','g-phone'].forEach(function(id){
     const f=document.getElementById(id); if(f)f.classList.remove('field-invalid');
     const e=document.getElementById(id+'-err'); if(e)e.classList.remove('is-visible');
@@ -1786,7 +1792,7 @@ function submitGroup(){
   // it's visible in the CRM without a schema change.
   const participantsSummary = participants.map((p, i) =>
     `Participant ${i+1}${i===0?' (Primary)':''}: ${p.name || '—'} · DOB: ${p.dob || '—'}` + (p.intention ? ` · Intention: ${p.intention}` : '')
-  ).join('\n');
+  ).join('\n') + (notes ? '\n\nNotes: ' + notes : '');
   const booking = {
     id: groupId, service:'Group Magic', package: selectedGroupSession,
     price: 'TBC',
