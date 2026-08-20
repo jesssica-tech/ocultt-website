@@ -9,6 +9,9 @@ const OCULTT_API = 'https://ocultt-website.onrender.com/api';
 const OCULTT_BACKEND_CONNECTED = !/your-backend-url/.test(OCULTT_API);
 
 let selectedReading='',selectedDuration='',selectedSpell='',selectedGroupSession='New Moon Circle',selectedGroupDate='July 2, 2026 · 8:00 PM IST',selectedNum='',selectedDay=null,selectedTime='',selectedDayLabel='';
+// Urgent/same-day delivery for Audio Tarot Reading (+20%, same pattern as
+// Spell) — see onTarotUrgencyChange() / renderAudioQuestionInputs().
+let selectedTarotUrgency='No rush';
 let tarotStep=1;
 // True only while showPage('tarot-booking') is being called to resume a Phone
 // Tarot booking after the customer returns from Calendly — tells showPage to
@@ -417,7 +420,7 @@ function showPage(id, fromPopstate){
         _resumingPhoneTarot=false;
         renderTarotStep();
       } else {
-        tarotStep=1;selectedReading='';selectedDuration='';selectedDay=null;selectedTime='';selectedDayLabel='';_bookingSaved=false;_paymentVerified=false;_rzpPaymentId='';
+        tarotStep=1;selectedReading='';selectedDuration='';selectedDay=null;selectedTime='';selectedDayLabel='';selectedTarotUrgency='No rush';_bookingSaved=false;_paymentVerified=false;_rzpPaymentId='';
         if(typeof _phoneCalendlyAutoTimer!=='undefined' && _phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
         renderTarotStep();
       }
@@ -922,6 +925,7 @@ function handleAudioReadingSelect(sel){
 function renderAudioQuestionInputs(){
   const intentWrap = document.getElementById('t-intent-wrap');
   const audioWrap  = document.getElementById('t-audio-questions-wrap');
+  const urgentWrap = document.getElementById('t-urgent-wrap');
   if(!intentWrap||!audioWrap) return;
   const isAudio = selectedReading && selectedReading.startsWith('Audio') && _audioQCount > 0;
   if(isAudio){
@@ -935,11 +939,23 @@ function renderAudioQuestionInputs(){
     }
     audioWrap.innerHTML = html;
     audioWrap.style.display = '';
+    // Urgent/same-day delivery option — only meaningful for Audio Tarot
+    // Reading (a recorded delivery with a turnaround time to speed up).
+    // Phone Tarot is a live scheduled call via Calendly, so there's no
+    // "delivery speed" to expedite — this option is intentionally never
+    // shown for it.
+    if(urgentWrap) urgentWrap.style.display = '';
   } else {
     intentWrap.style.display = '';
     audioWrap.style.display = 'none';
     audioWrap.innerHTML = '';
+    if(urgentWrap) urgentWrap.style.display = 'none';
+    selectedTarotUrgency = 'No rush';
   }
+}
+function onTarotUrgencyChange(){
+  const sel = document.getElementById('t-urgent');
+  selectedTarotUrgency = (sel && sel.value === 'Urgent') ? 'Urgent' : 'No rush';
 }
 function handlePhoneReadingSelect(sel){
   sel.classList.toggle('has-value', !!sel.value);
@@ -1693,6 +1709,30 @@ function initiateSpellRazorpay(){
   });
 }
 
+// ── Group Magic — participant fields scale with the "Number of
+// Participants" select (1/2/3). Participant 1 reuses the main Full Name
+// field above; participants 2+ get their own Name field. Every
+// participant gets their own DOB + Intention, matching the actual need
+// (a couple booking together has two different birth charts and two
+// different intentions, not one shared one).
+function renderGroupParticipantFields(){
+  const count = parseInt(document.getElementById('g-participants')?.value || '1', 10);
+  const wrap = document.getElementById('group-participants-wrap');
+  if (!wrap) return;
+  let html = '';
+  for (let i = 1; i <= count; i++) {
+    const isPrimary = i === 1;
+    html += `<div class="form-grid" style="margin-bottom:${i < count ? '1.2rem' : '0'};padding-bottom:${i < count ? '1.2rem' : '0'};${i < count ? 'border-bottom:1px solid var(--border)' : ''}">
+      <p style="grid-column:1/-1;font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em;color:var(--gold);text-transform:uppercase;margin-bottom:0.2rem">${isPrimary ? 'Your Details' : 'Participant ' + i}</p>
+      ${isPrimary ? '' : `<div class="form-group"><label>Full Name *</label><input type="text" id="g-p${i}-name" placeholder="Full name"><span class="field-error" id="g-p${i}-name-err">Please enter this participant's name</span></div>`}
+      <div class="form-group${isPrimary?' full':''}"><label>Date of Birth *</label><input type="date" id="g-p${i}-dob"><span class="field-error" id="g-p${i}-dob-err">Please enter date of birth</span></div>
+      <div class="form-group full"><label>Intention (Optional)</label><textarea id="g-p${i}-intent" placeholder="What is ${isPrimary?'your':'their'} intention for this circle?"></textarea></div>
+    </div>`;
+  }
+  wrap.innerHTML = html;
+}
+document.addEventListener('DOMContentLoaded', function() { renderGroupParticipantFields(); });
+
 function submitGroup(){
   const nameEl  = document.getElementById('g-name');
   const emailEl = document.getElementById('g-email');
@@ -1710,6 +1750,30 @@ function submitGroup(){
   if(!email||!email.includes('@')){if(emailEl)emailEl.classList.add('field-invalid');const e=document.getElementById('g-email-err');if(e)e.classList.add('is-visible');hasError=true;}
   if(!phone){if(phoneEl)phoneEl.classList.add('field-invalid');const e=document.getElementById('g-phone-err');if(e)e.classList.add('is-visible');hasError=true;}
   if(!selectedGroupSession){_showBanner('group-error','Please select a session above before registering');return;}
+
+  // Collect + validate each participant's DOB (required) and name
+  // (required for participants 2+, participant 1 reuses g-name).
+  const count = parseInt(document.getElementById('g-participants')?.value || '1', 10);
+  const participants = [];
+  for (let i = 1; i <= count; i++) {
+    const isPrimary = i === 1;
+    const pNameEl = document.getElementById('g-p' + i + '-name');
+    const pDobEl  = document.getElementById('g-p' + i + '-dob');
+    const pIntentEl = document.getElementById('g-p' + i + '-intent');
+    if (pNameEl) pNameEl.classList.remove('field-invalid');
+    if (pDobEl)  pDobEl.classList.remove('field-invalid');
+    const pNameErrEl = document.getElementById('g-p' + i + '-name-err'); if (pNameErrEl) pNameErrEl.classList.remove('is-visible');
+    const pDobErrEl  = document.getElementById('g-p' + i + '-dob-err');  if (pDobErrEl)  pDobErrEl.classList.remove('is-visible');
+
+    const pName = isPrimary ? name : (pNameEl?.value || '').trim();
+    const pDob  = (pDobEl?.value || '').trim();
+    const pIntent = (pIntentEl?.value || '').trim();
+
+    if (!isPrimary && !pName) { pNameEl?.classList.add('field-invalid'); pNameErrEl?.classList.add('is-visible'); hasError = true; }
+    if (!pDob) { pDobEl?.classList.add('field-invalid'); pDobErrEl?.classList.add('is-visible'); hasError = true; }
+    participants.push({ name: pName, dob: pDob, intention: pIntent });
+  }
+
   if(hasError){
     _showBanner('group-error','Please fill in all required fields to continue');
     const firstErr=document.querySelector('#page-group-booking .field-invalid');
@@ -1717,10 +1781,16 @@ function submitGroup(){
     return;
   }
   const groupId = 'OG-' + Math.floor(100000 + Math.random() * 900000);
+  // No structured "participants" column exists (see schema.sql) — folded
+  // into a readable multi-line summary in the intention field instead, so
+  // it's visible in the CRM without a schema change.
+  const participantsSummary = participants.map((p, i) =>
+    `Participant ${i+1}${i===0?' (Primary)':''}: ${p.name || '—'} · DOB: ${p.dob || '—'}` + (p.intention ? ` · Intention: ${p.intention}` : '')
+  ).join('\n');
   const booking = {
     id: groupId, service:'Group Magic', package: selectedGroupSession,
     price: 'TBC',
-    duration:'—', name, email, phone, intention:'',
+    duration:'—', name, email, phone, intention: participantsSummary, participants,
     paymentStatus: 'Unpaid', priority: 'Normal',
     date: selectedGroupDate, time:'', status:'Booking Received', createdAt: new Date().toISOString()
   };
@@ -1729,7 +1799,7 @@ function submitGroup(){
   if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: groupId, service: 'Group Magic', package: selectedGroupSession, preferredDate: selectedGroupDate, name, email, phone })
+    body: JSON.stringify({ id: groupId, service: 'Group Magic', package: selectedGroupSession, preferredDate: selectedGroupDate, name, email, phone, intention: participantsSummary })
   }).catch(e => console.warn('[group POST]', e.message));
   document.getElementById('group-form-view').style.display='none';
   document.getElementById('group-success-view').style.display='block';
@@ -5800,7 +5870,25 @@ function populatePaymentStep() {
 
   if (rEl) rEl.textContent = selectedReading || '—';
   if (dEl) dEl.textContent = selectedDuration ? selectedDuration + ' Session' : '—';
-  if (tEl) tEl.textContent = selectedPriceOverride || PRICE_MAP[selectedDuration] || '—';
+  // Urgent delivery (+20%, Audio Tarot Reading only) — computed the same
+  // way as Spell's urgent fee: display-only here, the server independently
+  // recomputes this same 20% from its own verified base price and never
+  // trusts this number as the actual amount to charge.
+  const basePriceLabel = selectedPriceOverride || PRICE_MAP[selectedDuration] || null;
+  const urgentRow = document.getElementById('pay-urgent-row');
+  if (basePriceLabel && selectedTarotUrgency === 'Urgent') {
+    const baseNum = _extractPriceNumber(basePriceLabel);
+    const finalNum = Math.round(baseNum * 1.2);
+    if (tEl) tEl.textContent = '₹' + finalNum.toLocaleString('en-IN');
+    if (urgentRow) {
+      urgentRow.style.display = 'flex';
+      const feeEl = document.getElementById('pay-urgent-fee');
+      if (feeEl) feeEl.textContent = '+ ₹' + (finalNum - baseNum).toLocaleString('en-IN') + ' (20% urgent fee)';
+    }
+  } else {
+    if (tEl) tEl.textContent = basePriceLabel || '—';
+    if (urgentRow) urgentRow.style.display = 'none';
+  }
   if (dtEl) {
     const isPhoneReading = selectedReading && selectedReading.startsWith('Phone');
     dtEl.textContent = isPhoneReading
@@ -5877,7 +5965,7 @@ function initiateRazorpay() {
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone })
+    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone, urgency: (isAudioReading ? selectedTarotUrgency : null) })
   })
   .then(r => r.json())
   .then(order => {

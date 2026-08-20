@@ -89,8 +89,17 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
 
   let amount;
   if (type === 'booking') {
-    amount = TAROT_PRICE_PAISE[duration];
-    if (!amount) return res.status(400).json({ error: 'Unknown or unsupported duration — cannot price this booking.' });
+    const baseAmount = TAROT_PRICE_PAISE[duration];
+    if (!baseAmount) return res.status(400).json({ error: 'Unknown or unsupported duration — cannot price this booking.' });
+    // Urgent/same-day delivery (+20%) — only ever sent by the frontend for
+    // Audio Tarot Reading (see onTarotUrgencyChange/renderAudioQuestionInputs
+    // in js/script.js; Phone Tarot's UI never shows this option since it's
+    // a live scheduled call, not a delivered recording). Rounded to the
+    // nearest RUPEE first (matching what the frontend displays to the
+    // customer before checkout), then converted to paise — rounding the
+    // paise amount directly instead would occasionally charge a few paise
+    // off from the total the customer actually saw on screen.
+    amount = urgency === 'Urgent' ? Math.round((baseAmount / 100) * URGENT_MULTIPLIER) * 100 : baseAmount;
   } else if (type === 'spell') {
     const base = Number(basePrice);
     if (!SPELL_PRICE_TIERS_RUPEES.has(base)) {
