@@ -1666,6 +1666,7 @@ function initiateSpellRazorpay(){
             detail: b.detail, notes: b.notes
           })
         })
+        .then(r => { if (!r.ok) console.warn('[initiateSpellRazorpay] POST /spells did not succeed (status ' + r.status + ') — payment will still be verified against the placeholder row created at order time, but the request\'s full details may not have saved. Check the CRM.'); })
         .then(() => fetch(OCULTT_API + '/payments/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1801,14 +1802,43 @@ function submitGroup(){
     date: selectedGroupDate, time:'', status:'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(booking);
-  sendRequestReceivedEmail(booking);
-  if (OCULTT_BACKEND_CONNECTED) fetch(OCULTT_API + '/bookings', {
+  // Group Magic has no payment step gating it (unlike Tarot/Spell/EH/
+  // Numerology), so this POST is the ONLY thing that gets the booking into
+  // the shared CRM database — there's no payment/verify step to fall back
+  // on if it fails. Previously this was fire-and-forget: the success
+  // screen showed regardless of whether the save actually worked, so a
+  // failed save looked identical to a successful one to the customer (and
+  // the booking would then be missing from the CRM for everyone). Now
+  // waits for a real success before showing the success screen, and shows
+  // a clear retry-able error instead of a false "you're registered" if it
+  // fails.
+  const submitBtn = document.querySelector('#group-form-view .btn-primary');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Registering…'; }
+  if (!OCULTT_BACKEND_CONNECTED) {
+    // No live backend configured (local/dev only) — fall back to the
+    // local-only save so the flow can still be tested end-to-end.
+    sendRequestReceivedEmail(booking);
+    document.getElementById('group-form-view').style.display='none';
+    document.getElementById('group-success-view').style.display='block';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register for Session →'; }
+    return;
+  }
+  fetch(OCULTT_API + '/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: groupId, service: 'Group Magic', package: selectedGroupSession, preferredDate: selectedGroupDate, name, email, phone, intention: participantsSummary })
-  }).catch(e => console.warn('[group POST]', e.message));
-  document.getElementById('group-form-view').style.display='none';
-  document.getElementById('group-success-view').style.display='block';
+  })
+  .then(r => { if (!r.ok) throw new Error('status ' + r.status); return r; })
+  .then(() => {
+    sendRequestReceivedEmail(booking);
+    document.getElementById('group-form-view').style.display='none';
+    document.getElementById('group-success-view').style.display='block';
+  })
+  .catch(e => {
+    console.warn('[group POST]', e.message);
+    _showBanner('group-error', 'Something went wrong saving your registration — please try again. If this keeps happening, contact us directly so your spot isn\'t missed.');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register for Session →'; }
+  });
 }
 
 function submitNum(){
@@ -1938,6 +1968,7 @@ function initiateNumRazorpay(){
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: b.id, service: 'Numerology', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.dob ? ('DOB: ' + b.dob) : null })
         })
+        .then(r => { if (!r.ok) console.warn('[initiateNumRazorpay] POST /bookings did not succeed (status ' + r.status + ') — payment will still be verified against the placeholder row created at order time, but the request\'s full details may not have saved. Check the CRM.'); })
         .then(() => fetch(OCULTT_API + '/payments/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -7007,6 +7038,7 @@ function initiateEHRazorpay(){
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: b.id, service: 'Energy Healing', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.intention })
         })
+        .then(r => { if (!r.ok) console.warn('[initiateEHRazorpay] POST /bookings did not succeed (status ' + r.status + ') — payment will still be verified against the placeholder row created at order time, but the request\'s full details may not have saved. Check the CRM.'); })
         .then(() => fetch(OCULTT_API + '/payments/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

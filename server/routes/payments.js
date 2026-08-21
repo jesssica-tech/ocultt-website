@@ -135,16 +135,29 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
     // right away, so the razorpay webhook (payment.failed / payment.captured)
     // has a row to find and update even if the customer never completes
     // checkout and the frontend never calls /payments/verify or POST
-    // /bookings. showConfirmation() later upserts this same row (same id)
-    // with the full booking details once payment actually succeeds — never
-    // blocks order creation from returning to the client.
-    // Only for type 'booking' (Tarot) — a 'spell' booking's row already
-    // exists at this point (created by POST /spells before the customer
-    // ever reaches payment), so upserting here would risk clobbering real
-    // fields (spell_category, urgency, intention, etc.) with blanks.
-    if (type === 'booking' && supabase && name && email) {
+    // /bookings. The frontend's post-payment POST /spells or /bookings call
+    // (which adds the richer fields — intention, urgency, DOB, etc.) later
+    // upserts this same row (same id) with the full details.
+    //
+    // This covers EVERY type, including spell/energy_healing/numerology —
+    // previously only 'booking' (Tarot) had this. Those three create their
+    // real row via a POST *after* Razorpay's handler fires (see
+    // initiateSpellRazorpay/initiateEHRazorpay/initiateNumRazorpay in
+    // js/script.js), and that POST's success was never actually checked
+    // before calling /payments/verify — if it silently failed for any
+    // reason, /payments/verify would still mark payment as Paid, but
+    // there'd be no row for it to attach to: the customer would see
+    // "Confirmed" and be charged, while the booking never appeared in the
+    // CRM for anyone. Creating the placeholder here, at order time (before
+    // any payment happens), closes that gap at the root — a row now always
+    // exists by the time verify runs, regardless of what happens next.
+    if (supabase && name && email) {
+      const serviceLabel = type === 'booking' ? 'Tarot Reading'
+        : type === 'spell' ? 'Spell / Magic'
+        : type === 'energy_healing' ? 'Energy Healing'
+        : 'Numerology';
       supabase.from('bookings').upsert({
-        id: bookingId, service: 'Tarot Reading', duration,
+        id: bookingId, service: serviceLabel, duration: duration || null,
         name, email, phone: phone || null,
         payment_status: 'Unpaid', status: 'Booking Received'
       }, { onConflict: 'id' }).then(({ error }) => {
