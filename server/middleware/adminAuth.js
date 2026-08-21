@@ -15,8 +15,18 @@ const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'the-ocultt-tarot';
 const ISSUER = `https://securetoken.google.com/${PROJECT_ID}`;
 
 // Google's public JWKS for Firebase Auth tokens — no credentials required.
+// FIX: this was pointing at a broken placeholder URL
+// ('[email protected]') instead of Google's real Firebase service
+// account — every single admin-authenticated request (loading bookings,
+// spells, everything in the CRM) has been failing token verification
+// because of this since before this codebase was ever handed over. It may
+// have appeared to work intermittently because jose's createRemoteJWKSet
+// caches keys in memory — if a fetch ever succeeded once, it kept working
+// off that cache until the next Render restart/redeploy wiped it, at
+// which point every fresh verification attempt would fail outright. This
+// is the real cause behind today's "CRM won't load bookings" reports.
 const JWKS = createRemoteJWKSet(
-  new URL('https://www.googleapis.com/service_accounts/v1/jwk/[email protected]')
+  new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
 );
 
 // Fallback allowlist if Supabase isn't configured yet — keep in sync with

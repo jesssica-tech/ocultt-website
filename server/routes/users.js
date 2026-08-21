@@ -18,8 +18,11 @@ const router = express.Router();
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'the-ocultt-tarot';
 const ISSUER = `https://securetoken.google.com/${PROJECT_ID}`;
+// FIX: same broken placeholder URL as adminAuth.js had — see the comment
+// there for the full explanation. Corrected to Google's real Firebase
+// service account JWKS endpoint.
 const JWKS = createRemoteJWKSet(
-  new URL('https://www.googleapis.com/service_accounts/v1/jwk/[email protected]')
+  new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
 );
 
 const syncLimiter = rateLimit({
