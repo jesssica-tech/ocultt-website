@@ -26,7 +26,8 @@ const SERVICE_EMAIL = {
   'Spell / Magic':   { template: 'spell_ready',          label: 'Spell Ritual' },
   'Energy Healing':  { template: 'energy_healing_ready',  label: 'Energy Healing Session' },
   'Numerology':      { template: 'numerology_ready',      label: 'Numerology Reading' },
-  'Tarot Reading':   { template: 'tarot_audio_ready',      label: 'Tarot Reading' }
+  'Tarot Reading':   { template: 'tarot_audio_ready',      label: 'Tarot Reading' },
+  'Group Magic':     { template: 'delivery_ready',         label: 'Group Ritual' }
 };
 
 function resolveServiceEmail(service) {

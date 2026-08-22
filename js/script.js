@@ -4343,7 +4343,7 @@ function openBookingDetail(bookingId) {
     <button class="cd-action-btn" onclick="addInternalNoteToBooking('${b.id}')">📝 Add Internal Note</button>
     ${b.email ? `<a class="cd-action-btn" href="${buildBookingMailtoLink(b)}">✉ Send Email</a>` : ''}
     ${waPhone ? `<a class="cd-action-btn" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">◈ Send WhatsApp</a>` : ''}
-    ${isMediaEligible(b) ? `<button class="cd-action-btn" style="background:var(--gold-dk);color:#fff" onclick="openMediaModal('${b.id}')">🎥 Record / Upload</button>` : ''}
+    ${isMediaEligible(b) ? `<button class="cd-action-btn" style="background:var(--gold-dk);color:#fff" onclick="openMediaModal('${b.id}')">🎥 Send Recording to Client</button>` : ''}
   `;
 
   // ── Customer Notes (general, not tied to this specific booking) ──
@@ -4413,12 +4413,13 @@ async function renderCrmExtras(bookingId) {
         </div>`).join('') : `<p style="font-size:0.85rem;color:var(--text-dim);font-style:italic">No other bookings from this email yet.</p>`}
     </div>
 
+    ${data.booking && data.booking.meet_status && data.booking.meet_status !== 'N/A' ? `
     <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">
       <p class="cd-info-label" style="margin-bottom:0.5rem">Google Meet Summary</p>
       <textarea id="bd-meet-summary" rows="3" placeholder="Notes from the call — what was discussed, follow-ups, anything worth remembering next time." style="width:100%;font-family:'Montserrat',sans-serif;font-size:0.88rem;padding:0.6rem;border:1px solid var(--border);background:transparent;color:var(--text);resize:vertical">${(data.booking && data.booking.meet_summary) || ''}</textarea>
       <button class="cd-action-btn" style="margin-top:0.5rem" onclick="saveMeetSummary('${bookingId}')">Save Summary</button>
       <span id="bd-meet-summary-status" style="font-size:0.78rem;color:var(--text-dim);margin-left:0.5rem"></span>
-    </div>
+    </div>` : ''}
 
     <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">
       <p class="cd-info-label" style="margin-bottom:0.5rem">Messages to Client</p>
@@ -6804,9 +6805,11 @@ async function sendVideoToCustomer() {
 // server/routes/media.js): /bookings/:id/media/upload|record|send.
 function isMediaEligible(b){
   if (!b) return false;
-  if (b.service === 'Energy Healing' || b.service === 'Numerology') return true;
-  if (b.service === 'Tarot Reading' && (b.package||'').startsWith('Audio')) return true;
-  return false;
+  // Spell / Magic isn't included here — it already has its own dedicated
+  // recording system (see the Spell Requests tab / openVideoModal), so it
+  // never reaches this general Bookings detail view anyway. Every other
+  // service can now record & deliver video or audio here.
+  return ['Energy Healing', 'Numerology', 'Tarot Reading', 'Group Magic'].includes(b.service);
 }
 
 let _mmBookingId = null;
