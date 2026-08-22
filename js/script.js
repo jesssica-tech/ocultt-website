@@ -4343,6 +4343,7 @@ function openBookingDetail(bookingId) {
     <button class="cd-action-btn" onclick="addInternalNoteToBooking('${b.id}')">📝 Add Internal Note</button>
     ${b.email ? `<a class="cd-action-btn" href="${buildBookingMailtoLink(b)}">✉ Send Email</a>` : ''}
     ${waPhone ? `<a class="cd-action-btn" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">◈ Send WhatsApp</a>` : ''}
+    ${isMediaEligible(b) ? `<button class="cd-action-btn" style="background:var(--gold-dk);color:#fff" onclick="openMediaModal('${b.id}')">🎥 Record / Upload</button>` : ''}
   `;
 
   // ── Customer Notes (general, not tied to this specific booking) ──
@@ -6796,6 +6797,217 @@ async function sendVideoToCustomer() {
 }
 
 // ── Webcam recording ────────────────────────────────────────────────
+// ── Generic media (video/audio) modal — Energy Healing, Numerology, Audio
+// Tarot Reading. Deliberately separate state/IDs (mm-*) from the existing
+// Spell video modal (vm-*) above — zero shared code, zero risk to the
+// already-working Spell flow. Uses the new generic backend routes (see
+// server/routes/media.js): /bookings/:id/media/upload|record|send.
+function isMediaEligible(b){
+  if (!b) return false;
+  if (b.service === 'Energy Healing' || b.service === 'Numerology') return true;
+  if (b.service === 'Tarot Reading' && (b.package||'').startsWith('Audio')) return true;
+  return false;
+}
+
+let _mmBookingId = null;
+let _mmMediaType  = 'video';
+let _mmStream     = null;
+let _mmRecorder   = null;
+let _mmChunks     = [];
+let _mmRecordedBlob = null;
+
+function openMediaModal(bookingId){
+  _mmBookingId = bookingId;
+  const b = OculttDB.getBookings().find(x => x.id === bookingId);
+  document.getElementById('mm-booking-id').textContent = bookingId;
+  document.getElementById('mm-client-name').textContent = b ? `Client: ${b.name} · ${b.service}` : '';
+
+  mmSetMediaType('video');
+  mmSwitchTab('upload');
+  document.getElementById('mm-file-name').textContent = '';
+  document.getElementById('mm-upload-btn').disabled = true;
+  document.getElementById('mm-upload-btn').style.opacity = '0.4';
+  document.getElementById('mm-status').style.display = 'none';
+  document.getElementById('mm-record-status').textContent = '';
+  document.getElementById('mm-stop-btn').style.display = 'none';
+  document.getElementById('mm-save-recording-btn').style.display = 'none';
+  document.getElementById('mm-file-input').value = '';
+  _mmRecordedBlob = null;
+
+  if (b && b.video_url && !b.video_sent) {
+    document.getElementById('mm-send-section').style.display = 'block';
+    document.getElementById('mm-send-status').textContent = '';
+  } else {
+    document.getElementById('mm-send-section').style.display = 'none';
+  }
+
+  document.getElementById('media-modal').style.display = 'flex';
+}
+
+function closeMediaModal(){
+  mmStopStream();
+  document.getElementById('media-modal').style.display = 'none';
+}
+
+function mmSetMediaType(type){
+  _mmMediaType = type === 'audio' ? 'audio' : 'video';
+  const videoBtn = document.getElementById('mm-type-video');
+  const audioBtn = document.getElementById('mm-type-audio');
+  if (videoBtn && audioBtn) {
+    videoBtn.style.background = _mmMediaType === 'video' ? 'var(--gold-dk)' : 'transparent';
+    videoBtn.style.color = _mmMediaType === 'video' ? '#fff' : 'var(--text)';
+    audioBtn.style.background = _mmMediaType === 'audio' ? 'var(--gold-dk)' : 'transparent';
+    audioBtn.style.color = _mmMediaType === 'audio' ? '#fff' : 'var(--text)';
+  }
+  const preview = document.getElementById('mm-preview');
+  if (preview) preview.style.display = _mmMediaType === 'video' ? 'block' : 'none';
+  const fileInput = document.getElementById('mm-file-input');
+  if (fileInput) fileInput.accept = _mmMediaType === 'video' ? 'video/*' : 'audio/*';
+  // Re-init capture if the record tab is currently active
+  if (document.getElementById('mm-record-panel').style.display !== 'none') mmInitCapture();
+}
+
+function mmSwitchTab(tab){
+  const uploadActive = tab === 'upload';
+  document.getElementById('mm-upload-panel').style.display = uploadActive ? 'block' : 'none';
+  document.getElementById('mm-record-panel').style.display = uploadActive ? 'none' : 'block';
+  document.getElementById('mm-tab-upload').style.borderBottomColor = uploadActive ? '#1A7055' : 'transparent';
+  document.getElementById('mm-tab-record').style.borderBottomColor = uploadActive ? 'transparent' : '#1A7055';
+  if (!uploadActive) mmInitCapture();
+  else mmStopStream();
+}
+
+async function mmInitCapture(){
+  mmStopStream();
+  try {
+    const constraints = _mmMediaType === 'audio' ? { audio: true } : { video: true, audio: true };
+    _mmStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const preview = document.getElementById('mm-preview');
+    if (_mmMediaType === 'video' && preview) { preview.srcObject = _mmStream; preview.muted = true; preview.play?.(); }
+    document.getElementById('mm-record-status').textContent = (_mmMediaType === 'audio' ? 'Microphone' : 'Camera') + ' ready. Click Start Recording when ready.';
+  } catch (err) {
+    document.getElementById('mm-record-status').textContent = (_mmMediaType === 'audio' ? 'Microphone' : 'Camera') + ' access denied: ' + err.message;
+  }
+}
+
+function mmStartRecording(){
+  if (!_mmStream) return;
+  _mmChunks = [];
+  _mmRecordedBlob = null;
+  const mimeType = _mmMediaType === 'audio' ? 'audio/webm;codecs=opus' : 'video/webm;codecs=vp9,opus';
+  _mmRecorder = new MediaRecorder(_mmStream, { mimeType });
+  _mmRecorder.ondataavailable = e => { if (e.data.size > 0) _mmChunks.push(e.data); };
+  _mmRecorder.onstop = () => {
+    _mmRecordedBlob = new Blob(_mmChunks, { type: _mmMediaType === 'audio' ? 'audio/webm' : 'video/webm' });
+    document.getElementById('mm-record-status').textContent = 'Recording ready (' + (_mmRecordedBlob.size/1024/1024).toFixed(1) + ' MB). Click Save & Upload.';
+    document.getElementById('mm-save-recording-btn').style.display = 'inline-block';
+    if (_mmMediaType === 'video') {
+      const preview = document.getElementById('mm-preview');
+      preview.srcObject = null;
+      preview.src = URL.createObjectURL(_mmRecordedBlob);
+      preview.controls = true;
+      preview.muted = false;
+    }
+  };
+  _mmRecorder.start(1000);
+  document.getElementById('mm-start-btn').style.display = 'none';
+  document.getElementById('mm-stop-btn').style.display = 'inline-block';
+  document.getElementById('mm-record-status').textContent = '● Recording…';
+}
+
+function mmStopRecording(){
+  if (_mmRecorder && _mmRecorder.state !== 'inactive') _mmRecorder.stop();
+  document.getElementById('mm-stop-btn').style.display = 'none';
+  document.getElementById('mm-start-btn').style.display = 'inline-block';
+}
+
+function mmSaveRecording(){
+  if (!_mmRecordedBlob) return;
+  const ext = _mmMediaType === 'audio' ? 'webm' : 'webm';
+  const file = new File([_mmRecordedBlob], `recording-${_mmBookingId}.${ext}`, { type: _mmRecordedBlob.type });
+  mmDoUpload(file);
+}
+
+function mmStopStream(){
+  if (_mmStream) { _mmStream.getTracks().forEach(t => t.stop()); _mmStream = null; }
+  if (_mmRecorder && _mmRecorder.state !== 'inactive') _mmRecorder.stop();
+  const preview = document.getElementById('mm-preview');
+  if (preview) { preview.srcObject = null; preview.src = ''; preview.controls = false; }
+}
+
+function mmOnFileSelected(input){
+  if (!input.files.length) return;
+  const file = input.files[0];
+  document.getElementById('mm-file-name').textContent = file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)';
+  document.getElementById('mm-upload-btn').disabled = false;
+  document.getElementById('mm-upload-btn').style.opacity = '1';
+}
+
+function mmUploadSelectedFile(){
+  const input = document.getElementById('mm-file-input');
+  if (!input.files.length) return;
+  mmDoUpload(input.files[0]);
+}
+
+function mmShowStatus(msg, color){
+  const el = document.getElementById('mm-status');
+  el.style.display = 'block';
+  el.style.color = color || 'var(--text-muted)';
+  el.textContent = msg;
+}
+
+async function mmDoUpload(file){
+  mmShowStatus('Uploading…', 'var(--text-muted)');
+  try {
+    if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
+    const formData = new FormData();
+    formData.append('file', file, file.name || 'recording.webm');
+    formData.append('mediaType', _mmMediaType);
+    const r = await fetch(OCULTT_API + '/bookings/' + _mmBookingId + '/media/upload', {
+      method: 'POST',
+      headers: { 'x-admin-key': getAdminKey() },
+      body: formData
+    });
+    const result = await r.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
+    mmShowStatus('✓ ' + (_mmMediaType === 'audio' ? 'Audio' : 'Video') + ' uploaded and secured. Expires in 7 days.', '#5BB888');
+    document.getElementById('mm-send-section').style.display = 'block';
+    document.getElementById('mm-send-status').textContent = '';
+    const idx = OculttDB.getBookings().findIndex(b => b.id === _mmBookingId);
+    if (idx > -1) {
+      const bookings = OculttDB.getBookings();
+      bookings[idx].video_url = result.publicId;
+      OculttDB.saveBooking(bookings[idx]);
+    }
+  } catch (err) {
+    console.warn('[mmDoUpload]', err.message);
+    mmShowStatus('Upload failed: ' + err.message, '#c0392b');
+  }
+}
+
+async function mmSendToCustomer(){
+  const btn = document.getElementById('mm-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  const statusEl = document.getElementById('mm-send-status');
+  try {
+    if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
+    const r = await fetch(OCULTT_API + '/bookings/' + _mmBookingId + '/media/send', {
+      method: 'POST',
+      headers: { 'x-admin-key': getAdminKey() }
+    });
+    const result = await r.json();
+    if (!result.success) throw new Error(result.error || 'Send failed');
+    statusEl.style.color = '#5BB888';
+    statusEl.textContent = '✓ Secure link emailed to customer. Link expires in 7 days.';
+    if (btn) btn.textContent = '✓ SENT';
+    setTimeout(renderAdminBookings, 500);
+  } catch (err) {
+    console.error('[mmSendToCustomer]', err.message);
+    statusEl.style.color = '#c0392b';
+    statusEl.textContent = '✗ Send failed: ' + err.message + ' — the customer did NOT receive this. Please try again.';
+    if (btn) { btn.disabled = false; btn.textContent = '✉ SEND NOW'; }
+  }
+}
 async function initCamera() {
   try {
     _videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });

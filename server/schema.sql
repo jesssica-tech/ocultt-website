@@ -195,3 +195,8 @@ alter table bookings add column if not exists payment_failure_reason text;
 -- time-limited delivery link instead of emailing a permanent Cloudinary URL.
 alter table bookings add column if not exists video_cloud_public_id text;
 alter table bookings add column if not exists video_cloud_resource_type text default 'video';
+-- Added for video+audio recording delivery on Energy Healing, Numerology,
+-- and Audio Tarot Reading (see server/routes/media.js) — 'video' or
+-- 'audio', purely for CRM display; doesn't affect how the file is stored
+-- or delivered (Cloudinary uses 'video' resource_type for both).
+alter table bookings add column if not exists video_media_type text;
