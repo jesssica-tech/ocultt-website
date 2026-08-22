@@ -122,6 +122,28 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'ocultt-tarot-email-server', time: new Date().toISOString() });
 });
 
+// ── Supabase keep-alive — Supabase's free tier pauses a project after 7
+// days with zero API activity (the whole project goes offline until
+// someone manually restores it in the dashboard — everything breaks at
+// once, not gracefully). This is a real risk for a low/irregular-traffic
+// launch period. This endpoint exists purely to be pinged periodically
+// (e.g. by a free external monitor like UptimeRobot or cron-job.org,
+// every 2–3 days for a safe margin) — it makes one trivial real query
+// against Supabase, which counts as activity and resets that 7-day
+// clock. /api/health above does NOT do this — it never touches Supabase
+// at all, so pinging it alone would not prevent the pause.
+app.get('/api/keepalive', async (req, res) => {
+  if (!supabase) return res.json({ ok: true, supabase: false, note: 'Supabase not configured — nothing to keep alive.' });
+  try {
+    const { error } = await supabase.from('crm_users').select('email').limit(1);
+    if (error) throw error;
+    res.json({ ok: true, supabase: true, time: new Date().toISOString() });
+  } catch (err) {
+    console.warn('[keepalive] Supabase ping failed:', err.message);
+    res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Routes ──
 app.use('/api', sendEmailRoute);
 app.use('/api', bookingsRoute);
