@@ -1788,56 +1788,168 @@ function submitGroup(){
     return;
   }
   const groupId = 'OG-' + Math.floor(100000 + Math.random() * 900000);
+  const basePrice = parseInt(document.getElementById('g-price')?.value || '1000', 10);
   // No structured "participants" column exists (see schema.sql) — folded
   // into a readable multi-line summary in the intention field instead, so
   // it's visible in the CRM without a schema change.
   const participantsSummary = participants.map((p, i) =>
     `Participant ${i+1}${i===0?' (Primary)':''}: ${p.name || '—'} · DOB: ${p.dob || '—'}` + (p.intention ? ` · Intention: ${p.intention}` : '')
   ).join('\n') + (notes ? '\n\nNotes: ' + notes : '');
-  const booking = {
-    id: groupId, service:'Group Magic', package: selectedGroupSession,
-    price: 'TBC',
-    duration:'—', name, email, phone, intention: participantsSummary, participants,
-    paymentStatus: 'Unpaid', priority: 'Normal',
-    date: selectedGroupDate, time:'', status:'Booking Received', createdAt: new Date().toISOString()
+
+  // Payment now happens BEFORE the registration is saved — held here and
+  // only actually created (POST /bookings) once Razorpay checkout
+  // succeeds, in initiateGroupRazorpay()'s handler below. Matches the
+  // same pattern already proven for Spell/Energy Healing/Numerology.
+  _pendingGroupBooking = {
+    id: groupId, service: 'Group Magic', package: selectedGroupSession,
+    basePrice, name, email, phone, preferredDate: selectedGroupDate,
+    intention: participantsSummary
   };
-  OculttDB.saveBooking(booking);
-  // Group Magic has no payment step gating it (unlike Tarot/Spell/EH/
-  // Numerology), so this POST is the ONLY thing that gets the booking into
-  // the shared CRM database — there's no payment/verify step to fall back
-  // on if it fails. Previously this was fire-and-forget: the success
-  // screen showed regardless of whether the save actually worked, so a
-  // failed save looked identical to a successful one to the customer (and
-  // the booking would then be missing from the CRM for everyone). Now
-  // waits for a real success before showing the success screen, and shows
-  // a clear retry-able error instead of a false "you're registered" if it
-  // fails.
-  const submitBtn = document.querySelector('#group-form-view .btn-primary');
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Registering…'; }
-  if (!OCULTT_BACKEND_CONNECTED) {
-    // No live backend configured (local/dev only) — fall back to the
-    // local-only save so the flow can still be tested end-to-end.
-    sendRequestReceivedEmail(booking);
-    document.getElementById('group-form-view').style.display='none';
-    document.getElementById('group-success-view').style.display='block';
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register for Session →'; }
+
+  renderGroupPaymentView();
+  document.getElementById('group-form-view').style.display = 'none';
+  document.getElementById('group-payment-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Group Magic payment step ────────────────────────────────────────
+let _pendingGroupBooking = null;
+
+function renderGroupPaymentView(){
+  const b = _pendingGroupBooking;
+  if (!b) return;
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setText('group-pay-session', b.package || '—');
+  setText('group-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  const payBtn = document.getElementById('group-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; payBtn.onclick = function(){ initiateGroupRazorpay(); }; }
+  const statusEl = document.getElementById('group-rzp-status-msg');
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
+}
+
+function backFromGroupPayment(){
+  document.getElementById('group-payment-view').style.display = 'none';
+  document.getElementById('group-form-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function groupRzpSetStatus(msg, color){
+  const el = document.getElementById('group-rzp-status-msg');
+  if (!el) return;
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
+}
+
+function finalizeGroupBooking(paymentId){
+  const b = _pendingGroupBooking;
+  if (b) {
+    OculttDB.saveBooking({
+      id: b.id, service: 'Group Magic', package: b.package,
+      price: '₹' + b.basePrice.toLocaleString('en-IN'),
+      duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
+      paymentStatus: 'Paid', razorpayPaymentId: paymentId,
+      date: b.preferredDate, time: '', status: 'Booking Received', createdAt: new Date().toISOString()
+    });
+  }
+  document.getElementById('group-payment-view').style.display = 'none';
+  document.getElementById('group-success-view').style.display = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  _pendingGroupBooking = null;
+}
+
+function initiateGroupRazorpay(){
+  const b = _pendingGroupBooking;
+  if (!b) return;
+  const payBtn = document.getElementById('group-rzp-pay-btn');
+  if (payBtn) { payBtn.disabled = true; payBtn.style.opacity = '0.5'; payBtn.textContent = 'Creating order…'; }
+
+  if (TEST_MODE) {
+    if (payBtn) payBtn.textContent = 'Simulating test payment…';
+    groupRzpSetStatus('TEST MODE — simulating payment, no real charge is made…', 'var(--gold)');
+    setTimeout(function(){
+      groupRzpSetStatus('✓ TEST MODE — payment simulated, registration confirmed.', 'var(--sage)');
+      setTimeout(function(){ finalizeGroupBooking('TEST-' + Math.floor(100000 + Math.random() * 900000)); }, 1200);
+    }, 900);
     return;
   }
-  fetch(OCULTT_API + '/bookings', {
+
+  fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: groupId, service: 'Group Magic', package: selectedGroupSession, preferredDate: selectedGroupDate, name, email, phone, intention: participantsSummary })
+    body: JSON.stringify({ bookingId: b.id, type: 'group_magic', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
   })
-  .then(r => { if (!r.ok) throw new Error('status ' + r.status); return r; })
-  .then(() => {
-    sendRequestReceivedEmail(booking);
-    document.getElementById('group-form-view').style.display='none';
-    document.getElementById('group-success-view').style.display='block';
+  .then(r => r.json())
+  .then(order => {
+    if (order.error) throw { ocultOrderError: true, message: order.error };
+    if (payBtn) payBtn.textContent = 'Opening payment…';
+
+    const options = {
+      key:         order.keyId,
+      order_id:    order.orderId,
+      amount:      order.amount,
+      currency:    order.currency,
+      name:        'The Ocultt Tarot',
+      description: b.package,
+      prefill:     { name: b.name, email: b.email, contact: b.phone },
+      notes:       { groupId: b.id },
+      theme:       { color: '#2E8B6E' },
+      modal: {
+        ondismiss: function() {
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; }
+          groupRzpSetStatus('Payment cancelled. Click "Pay & Confirm Registration" to try again.', 'var(--text-muted)');
+        }
+      },
+      handler: function(response) {
+        groupRzpSetStatus('Verifying payment…', 'var(--text-muted)');
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Group Magic', package: b.package, preferredDate: b.preferredDate, name: b.name, email: b.email, phone: b.phone, intention: b.intention })
+        })
+        .then(r => { if (!r.ok) console.warn('[initiateGroupRazorpay] POST /bookings did not succeed (status ' + r.status + ') — payment will still be verified against the placeholder row created at order time, but the request\'s full details may not have saved. Check the CRM.'); })
+        .then(() => fetch(OCULTT_API + '/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razorpay_order_id:   response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature:  response.razorpay_signature,
+            bookingId: b.id,
+            bookingType: 'group_magic'
+          })
+        }))
+        .then(r => r.json())
+        .then(result => {
+          if (!result.success) throw new Error(result.error || 'Verification failed');
+          groupRzpSetStatus('✓ Payment verified! Your registration is confirmed.', 'var(--sage)');
+          setTimeout(function(){ finalizeGroupBooking(response.razorpay_payment_id); }, 1200);
+        })
+        .catch(err => {
+          groupRzpSetStatus('✗ Payment verification failed: ' + err.message + '. Please contact support.', '#c0392b');
+          if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; }
+        });
+      }
+    };
+
+    try {
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function(response) {
+        if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; payBtn.onclick = function(){ initiateGroupRazorpay(); }; }
+        groupRzpSetStatus('✗ Payment failed: ' + (response.error.description || 'Please try again.'), '#c0392b');
+      });
+      rzp.open();
+    } catch(e) {
+      if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; }
+      groupRzpSetStatus('Payment gateway could not be loaded. Please disable any ad-blockers and try again.', '#c0392b');
+    }
   })
-  .catch(e => {
-    console.warn('[group POST]', e.message);
-    _showBanner('group-error', 'Something went wrong saving your registration — please try again. If this keeps happening, contact us directly so your spot isn\'t missed.');
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register for Session →'; }
+  .catch(err => {
+    if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; }
+    if (err && err.ocultOrderError) {
+      groupRzpSetStatus('✗ ' + err.message, '#c0392b');
+    } else {
+      groupRzpSetStatus('Could not connect to payment server. Please try again.', '#c0392b');
+    }
+    console.error('[initiateGroupRazorpay]', err);
   });
 }
 

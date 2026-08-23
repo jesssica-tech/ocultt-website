@@ -57,6 +57,9 @@ const SPELL_PRICE_TIERS_RUPEES = new Set([1555, 1666, 1888, 1999, 2222, 2999, 44
 // has an urgency/multiplier option, so the base tier IS the final price.
 const ENERGY_HEALING_PRICE_TIERS_RUPEES = new Set([555, 599, 666, 777, 899, 1199, 1650]);
 const NUMEROLOGY_PRICE_TIERS_RUPEES = new Set([2222, 5555]);
+// Group Magic — variable per session, admin-adjustable. Two known tiers
+// so far; add more here as Akanksha introduces new session price points.
+const GROUP_MAGIC_PRICE_TIERS_RUPEES = new Set([1000, 1500]);
 // "Urgent" (Spell only) adds up to 20% — computed here server-side from
 // the verified base tier above, never from a client-sent final total.
 const URGENT_MULTIPLIER = 1.2;
@@ -83,7 +86,7 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
 
   const { bookingId, duration, type, name, email, phone, basePrice, urgency } = req.body || {};
   if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'Missing bookingId.' });
-  if (type !== 'booking' && type !== 'spell' && type !== 'energy_healing' && type !== 'numerology') {
+  if (type !== 'booking' && type !== 'spell' && type !== 'energy_healing' && type !== 'numerology' && type !== 'group_magic') {
     return res.status(400).json({ error: 'Unsupported payment type.' });
   }
 
@@ -108,10 +111,13 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
     const finalRupees = urgency === 'Urgent' ? Math.round(base * URGENT_MULTIPLIER) : base;
     amount = finalRupees * 100;
   } else {
-    // type === 'energy_healing' | 'numerology' — no urgency option on
-    // either form, so the base tier IS the final price.
+    // type === 'energy_healing' | 'numerology' | 'group_magic' — no
+    // urgency option on any of these forms, so the base tier IS the
+    // final price.
     const base = Number(basePrice);
-    const tiers = type === 'energy_healing' ? ENERGY_HEALING_PRICE_TIERS_RUPEES : NUMEROLOGY_PRICE_TIERS_RUPEES;
+    const tiers = type === 'energy_healing' ? ENERGY_HEALING_PRICE_TIERS_RUPEES
+      : type === 'numerology' ? NUMEROLOGY_PRICE_TIERS_RUPEES
+      : GROUP_MAGIC_PRICE_TIERS_RUPEES;
     if (!tiers.has(base)) {
       return res.status(400).json({ error: 'Unknown or unsupported price — cannot price this booking.' });
     }
@@ -155,7 +161,8 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
       const serviceLabel = type === 'booking' ? 'Tarot Reading'
         : type === 'spell' ? 'Spell / Magic'
         : type === 'energy_healing' ? 'Energy Healing'
-        : 'Numerology';
+        : type === 'numerology' ? 'Numerology'
+        : 'Group Magic';
       supabase.from('bookings').upsert({
         id: bookingId, service: serviceLabel, duration: duration || null,
         name, email, phone: phone || null,
