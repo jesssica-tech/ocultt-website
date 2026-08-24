@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://fonts.gstatic.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=186">
 
 <!-- ── FIREBASE AUTHENTICATION — Phase 1 ─────────────────────────────────
      Firebase JS SDK v10 "compat" build (no bundler required).
@@ -28,7 +28,7 @@
      ──────────────────────────────────────────────────────────────────────── -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="js/firebase.js"></script>
+<script src="js/firebase.js?v=186"></script>
 
 <!-- Legacy Google Identity Services script kept for Razorpay compatibility.
      gauthInit() now delegates to Firebase rather than GIS directly. -->
@@ -1815,6 +1815,17 @@
       <button class="btn-primary" onclick="showPage('numerology-booking')" style="font-size:0.65rem;letter-spacing:0.15em;padding:0.75rem 1.5rem">Book Numerology →</button>
     </div>
 
+    <!-- GROUP MAGIC -->
+    <div class="form-card">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
+        <span style="font-size:1.4rem">🌙</span>
+        <h2 style="margin:0">Group Magic</h2>
+      </div>
+      <p style="font-family:'Montserrat',sans-serif;font-size:1rem;color:var(--text-muted);font-style:italic;margin-bottom:1rem">Collective Ritual. Shared Intention. Amplified Energy.</p>
+      <p style="font-family:'Montserrat',sans-serif;font-size:1rem;color:var(--text);line-height:1.8;margin-bottom:1.2rem">Join a live group circle held during New Moon, Full Moon, and other seasonal rituals. Register alone or bring others along — each participant's own date of birth and intention helps Akankshaa personalize the ritual for everyone in the circle.</p>
+      <button class="btn-primary" onclick="showPage('group-booking')" style="font-size:0.65rem;letter-spacing:0.15em;padding:0.75rem 1.5rem">Join Group Magic →</button>
+    </div>
+
     <div class="form-nav" style="justify-content:center;margin-top:0.5rem;margin-bottom:2rem">
       <button class="btn-secondary" onclick="showPage('home')">← Back to Home</button>
     </div>
@@ -2499,6 +2510,6 @@
 </div><!-- end admin-layout -->
 </div><!-- end page-admin -->
 
-<script src="js/script.js"></script>
+<script src="js/script.js?v=186"></script>
 </body>
 </html>
