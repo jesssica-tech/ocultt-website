@@ -25,6 +25,7 @@ const razorpayWebhookRoute = require('./routes/razorpayWebhook');
 const deliveryRoute = require('./routes/delivery');
 const usersRoute = require('./routes/users');
 const mediaRoute = require('./routes/media');
+const couponsRoute = require('./routes/coupons');
 const { supabase } = require('./db');
 // gmailAuthSetup.js is no longer mounted — email now sends via Resend
 // (see utils/mailer.js) instead of Gmail OAuth. The file itself is left
@@ -157,6 +158,7 @@ app.use('/api', calendlySetupRoute);
 app.use('/api', deliveryRoute);
 app.use('/api', usersRoute);
 app.use('/api', mediaRoute);
+app.use('/api', couponsRoute.router);
 
 // ── 404 + error handling ──
 app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found' }));

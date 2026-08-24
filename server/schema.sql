@@ -200,3 +200,36 @@ alter table bookings add column if not exists video_cloud_resource_type text def
 -- 'audio', purely for CRM display; doesn't affect how the file is stored
 -- or delivered (Cloudinary uses 'video' resource_type for both).
 alter table bookings add column if not exists video_media_type text;
+
+-- ── coupons ── discount codes Akanksha creates and manages from the CRM.
+-- discount_type is 'percent' (0–100) or 'fixed' (a rupee amount off).
+-- min_amount is the minimum ORIGINAL (pre-discount) booking amount in
+-- rupees required to use this code — per the stated rule, ₹1,000.
+create table if not exists coupons (
+  code          text primary key,               -- stored/compared uppercase
+  discount_type text not null,                   -- 'percent' | 'fixed'
+  discount_value numeric not null,
+  min_amount    numeric not null default 1000,
+  active        boolean not null default true,
+  created_at    timestamptz not null default now()
+);
+
+-- ── coupon_redemptions ── one row per successful use. Enforces "no usage
+-- more than once per customer" — the unique constraint is the actual
+-- enforcement mechanism (not just an application-level check), matched
+-- against the email actually charged, at /payments/verify time.
+create table if not exists coupon_redemptions (
+  id            uuid primary key default gen_random_uuid(),
+  coupon_code   text not null references coupons(code),
+  email         text not null,
+  booking_id    text not null,
+  redeemed_at   timestamptz not null default now(),
+  unique(coupon_code, email)
+);
+create index if not exists idx_coupon_redemptions_code on coupon_redemptions(coupon_code);
+
+-- bookings: track which coupon (if any) was applied, and the resulting
+-- discount, purely for CRM visibility — the actual amount charged is
+-- always Razorpay's own order.amount, never trusted from this column.
+alter table bookings add column if not exists coupon_code text;
+alter table bookings add column if not exists discount_amount numeric;

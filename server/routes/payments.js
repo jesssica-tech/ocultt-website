@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const Razorpay = require('razorpay');
 const { supabase } = require('../db');
 const { sendCustomerBookingConfirmation, sendSpellBookingConfirmation, sendEnergyHealingConfirmation, sendNumerologyConfirmation } = require('../utils/notify');
+const { computeDiscount, normalizeCode } = require('./coupons');
 
 const router = express.Router();
 
@@ -124,6 +125,34 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
     amount = base * 100;
   }
 
+  // ── Coupon (optional) — applied AFTER the base/urgency price above is
+  // finalized, so the discount is always computed from the real,
+  // already-validated order amount, never a client-sent total. Re-checks
+  // everything server-side (exists, active, min amount, not already used
+  // by this email) — the /coupons/validate the frontend called earlier
+  // was only ever a preview.
+  let couponCode = null;
+  let discountAmountRupees = 0;
+  const requestedCoupon = normalizeCode(req.body.couponCode);
+  if (requestedCoupon) {
+    if (!supabase) return res.status(503).json({ error: 'Coupons are not available right now.' });
+    if (!email) return res.status(400).json({ error: 'An email is required to use a coupon.' });
+    const { data: coupon, error: cErr } = await supabase.from('coupons').select('*').eq('code', requestedCoupon).maybeSingle();
+    if (cErr) return res.status(500).json({ error: 'Could not check this coupon right now.' });
+    if (!coupon || !coupon.active) return res.status(400).json({ error: 'This coupon code is invalid or no longer active.' });
+    const amountRupees = amount / 100;
+    if (amountRupees < Number(coupon.min_amount)) {
+      return res.status(400).json({ error: `This coupon needs a minimum order of \u20b9${Number(coupon.min_amount).toLocaleString('en-IN')}.` });
+    }
+    const { data: existingRedemption } = await supabase.from('coupon_redemptions').select('id').eq('coupon_code', requestedCoupon).eq('email', email.toLowerCase()).maybeSingle();
+    if (existingRedemption) return res.status(400).json({ error: 'You\u2019ve already used this coupon.' });
+
+    const { discountAmount, finalAmount } = computeDiscount(coupon, amountRupees);
+    couponCode = requestedCoupon;
+    discountAmountRupees = discountAmount;
+    amount = finalAmount * 100;
+  }
+
   if (_recentOrders.has(bookingId)) {
     return res.json(_recentOrders.get(bookingId));
   }
@@ -131,7 +160,7 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
   try {
     const order = await razorpay.orders.create({
       amount, currency: 'INR', receipt: bookingId,
-      notes: { bookingId, duration: duration || null, type, urgency: urgency || null }
+      notes: { bookingId, duration: duration || null, type, urgency: urgency || null, couponCode: couponCode || null }
     });
     const payload = { orderId: order.id, amount: order.amount, currency: order.currency, keyId: process.env.RAZORPAY_KEY_ID };
     _recentOrders.set(bookingId, payload);
@@ -166,7 +195,8 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
       supabase.from('bookings').upsert({
         id: bookingId, service: serviceLabel, duration: duration || null,
         name, email, phone: phone || null,
-        payment_status: 'Unpaid', status: 'Booking Received'
+        payment_status: 'Unpaid', status: 'Booking Received',
+        coupon_code: couponCode, discount_amount: couponCode ? discountAmountRupees : null
       }, { onConflict: 'id' }).then(({ error }) => {
         if (error) console.warn('[payments create-order] Could not create placeholder booking row:', error.message);
       });
@@ -210,6 +240,17 @@ router.post('/payments/verify', async (req, res) => {
     if (error) {
       console.warn('[payments verify] Could not sync payment status to bookings row:', error.message);
     } else if (updated) {
+      // Redeem the coupon (if one was applied) now that payment has
+      // genuinely succeeded — this is the actual "consumption" point; a
+      // unique(coupon_code, email) constraint on coupon_redemptions is
+      // what actually enforces "once per customer", not just this insert.
+      if (updated.coupon_code && updated.email) {
+        supabase.from('coupon_redemptions').insert({
+          coupon_code: updated.coupon_code, email: updated.email.toLowerCase(), booking_id: updated.id
+        }).then(({ error: redeemErr }) => {
+          if (redeemErr) console.warn('[payments verify] Could not record coupon redemption:', redeemErr.message);
+        });
+      }
       if (bookingType === 'spell') {
         // Spell / Magic gets its own confirmation wording (see
         // sendSpellBookingConfirmation) — Akanksha performs the ritual

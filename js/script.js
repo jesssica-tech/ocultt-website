@@ -420,7 +420,7 @@ function showPage(id, fromPopstate){
         _resumingPhoneTarot=false;
         renderTarotStep();
       } else {
-        tarotStep=1;selectedReading='';selectedDuration='';selectedDay=null;selectedTime='';selectedDayLabel='';selectedTarotUrgency='No rush';_bookingSaved=false;_paymentVerified=false;_rzpPaymentId='';
+        tarotStep=1;selectedReading='';selectedDuration='';selectedDay=null;selectedTime='';selectedDayLabel='';selectedTarotUrgency='No rush';_bookingSaved=false;_paymentVerified=false;_rzpPaymentId='';if(typeof resetCoupon==='function')resetCoupon('t');
         if(typeof _phoneCalendlyAutoTimer!=='undefined' && _phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
         renderTarotStep();
       }
@@ -1572,6 +1572,8 @@ function renderSpellPaymentView(){
     }
   }
   setText('spell-pay-total', '₹' + b.finalPrice.toLocaleString('en-IN'));
+  resetCoupon('spell');
+  refreshCouponDisplay('spell');
   const payBtn = document.getElementById('spell-rzp-pay-btn');
   if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateSpellRazorpay(); }; }
   const statusEl = document.getElementById('spell-rzp-status-msg');
@@ -1628,7 +1630,7 @@ function initiateSpellRazorpay(){
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId: b.id, type: 'spell', basePrice: b.basePrice, urgency: b.urgency, name: b.name, email: b.email, phone: b.phone })
+    body: JSON.stringify({ bookingId: b.id, type: 'spell', basePrice: b.basePrice, urgency: b.urgency, name: b.name, email: b.email, phone: b.phone, couponCode: _appliedCoupons.spell ? _appliedCoupons.spell.code : null })
   })
   .then(r => r.json())
   .then(order => {
@@ -1821,6 +1823,8 @@ function renderGroupPaymentView(){
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('group-pay-session', b.package || '—');
   setText('group-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  resetCoupon('group');
+  refreshCouponDisplay('group');
   const payBtn = document.getElementById('group-rzp-pay-btn');
   if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; payBtn.onclick = function(){ initiateGroupRazorpay(); }; }
   const statusEl = document.getElementById('group-rzp-status-msg');
@@ -1875,7 +1879,7 @@ function initiateGroupRazorpay(){
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId: b.id, type: 'group_magic', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
+    body: JSON.stringify({ bookingId: b.id, type: 'group_magic', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone, couponCode: _appliedCoupons.group ? _appliedCoupons.group.code : null })
   })
   .then(r => r.json())
   .then(order => {
@@ -1998,6 +2002,8 @@ function renderNumPaymentView(){
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('num-pay-name', nameOnly || b.package || '—');
   setText('num-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  resetCoupon('num');
+  refreshCouponDisplay('num');
   const payBtn = document.getElementById('num-rzp-pay-btn');
   if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateNumRazorpay(); }; }
   const statusEl = document.getElementById('num-rzp-status-msg');
@@ -2050,7 +2056,7 @@ function initiateNumRazorpay(){
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId: b.id, type: 'numerology', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
+    body: JSON.stringify({ bookingId: b.id, type: 'numerology', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone, couponCode: _appliedCoupons.num ? _appliedCoupons.num.code : null })
   })
   .then(r => r.json())
   .then(order => {
@@ -2142,6 +2148,7 @@ function showAdminTab(id,el){
   if(id==='spells') renderAdminSpells();
   if(id==='sessions') renderSessionHistory();
   if(id==='analytics') renderAnalytics();
+  if(id==='coupons') renderCoupons();
 }
 
 
@@ -6009,6 +6016,88 @@ function stopSlotHoldTimer(silent){
   }
 }
 
+// ── Coupons ──────────────────────────────────────────────────────────
+// One shared implementation used by all 5 payment flows (Tarot, Spell,
+// Energy Healing, Numerology, Group Magic) rather than 5 copies. Only
+// ever a PREVIEW here — the server independently re-validates and
+// re-applies the discount at /payments/create-order, and the coupon is
+// only actually marked used after a real payment succeeds (see
+// server/routes/payments.js /verify) — this endpoint and this client
+// code can never spend someone's coupon on their behalf.
+let _appliedCoupons = { t: null, spell: null, eh: null, num: null, group: null };
+const _COUPON_TOTAL_EL = { t: 'pay-total', spell: 'spell-pay-total', eh: 'eh-pay-total', num: 'num-pay-total', group: 'group-pay-total' };
+
+function _couponBaseAmount(prefix){
+  if (prefix === 't') {
+    const basePriceLabel = selectedPriceOverride || PRICE_MAP[selectedDuration] || null;
+    if (!basePriceLabel) return 0;
+    const baseNum = _extractPriceNumber(basePriceLabel);
+    return selectedTarotUrgency === 'Urgent' ? Math.round(baseNum * 1.2) : baseNum;
+  }
+  if (prefix === 'spell') return _pendingSpellBooking ? _pendingSpellBooking.finalPrice : 0;
+  if (prefix === 'eh')    return _pendingEHBooking    ? _pendingEHBooking.basePrice    : 0;
+  if (prefix === 'num')   return _pendingNumBooking   ? _pendingNumBooking.basePrice   : 0;
+  if (prefix === 'group') return _pendingGroupBooking ? _pendingGroupBooking.basePrice : 0;
+  return 0;
+}
+function _couponEmail(prefix){
+  if (prefix === 't')     return (document.getElementById('t-email')?.value || '').trim();
+  if (prefix === 'spell') return _pendingSpellBooking ? _pendingSpellBooking.email : '';
+  if (prefix === 'eh')    return _pendingEHBooking    ? _pendingEHBooking.email    : '';
+  if (prefix === 'num')   return _pendingNumBooking   ? _pendingNumBooking.email   : '';
+  if (prefix === 'group') return _pendingGroupBooking ? _pendingGroupBooking.email : '';
+  return '';
+}
+function resetCoupon(prefix){
+  _appliedCoupons[prefix] = null;
+  const input = document.getElementById(prefix + '-coupon-input');
+  if (input) input.value = '';
+  const statusEl = document.getElementById(prefix + '-coupon-status');
+  if (statusEl) statusEl.textContent = '';
+}
+function refreshCouponDisplay(prefix){
+  const totalEl = document.getElementById(_COUPON_TOTAL_EL[prefix]);
+  const discountRow = document.getElementById(prefix + '-discount-row');
+  const discountAmountEl = document.getElementById(prefix + '-discount-amount');
+  const applied = _appliedCoupons[prefix];
+  const base = _couponBaseAmount(prefix);
+  if (applied) {
+    if (discountRow) discountRow.style.display = 'flex';
+    if (discountAmountEl) discountAmountEl.textContent = '\u2212 \u20b9' + applied.discountAmount.toLocaleString('en-IN') + ' (' + applied.code + ')';
+    if (totalEl) totalEl.textContent = '\u20b9' + applied.finalAmount.toLocaleString('en-IN');
+  } else {
+    if (discountRow) discountRow.style.display = 'none';
+    if (totalEl) totalEl.textContent = base ? ('\u20b9' + base.toLocaleString('en-IN')) : (totalEl.textContent || '\u2014');
+  }
+}
+async function applyCoupon(prefix){
+  const input = document.getElementById(prefix + '-coupon-input');
+  const statusEl = document.getElementById(prefix + '-coupon-status');
+  const code = (input?.value || '').trim().toUpperCase();
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color; statusEl.textContent = msg; } };
+  if (!code) { setStatus('Please enter a code.', '#c0392b'); return; }
+  const amount = _couponBaseAmount(prefix);
+  const email = _couponEmail(prefix);
+  if (!amount) { setStatus('Please complete the form above first.', '#c0392b'); return; }
+  if (!email || !email.includes('@')) { setStatus('Please enter your email above first.', '#c0392b'); return; }
+  setStatus('Checking…', 'var(--text-muted)');
+  try {
+    if (!OCULTT_BACKEND_CONNECTED) throw new Error('Coupons need a live connection — please try again shortly.');
+    const r = await fetch(OCULTT_API + '/coupons/validate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, email, amount })
+    });
+    const result = await r.json();
+    if (!result.valid) throw new Error(result.error || 'Invalid coupon');
+    _appliedCoupons[prefix] = { code, discountAmount: result.discountAmount, finalAmount: result.finalAmount };
+    setStatus('✓ Coupon applied — you saved \u20b9' + result.discountAmount.toLocaleString('en-IN') + '.', '#5BB888');
+  } catch (err) {
+    _appliedCoupons[prefix] = null;
+    setStatus('✗ ' + err.message, '#c0392b');
+  }
+  refreshCouponDisplay(prefix);
+}
+
 function populatePaymentStep() {
   const rEl = document.getElementById('pay-reading');
   const dEl = document.getElementById('pay-duration');
@@ -6040,6 +6129,7 @@ function populatePaymentStep() {
     if (tEl) tEl.textContent = basePriceLabel || '—';
     if (urgentRow) urgentRow.style.display = 'none';
   }
+  refreshCouponDisplay('t');
   if (dtEl) {
     const isPhoneReading = selectedReading && selectedReading.startsWith('Phone');
     dtEl.textContent = isPhoneReading
@@ -6116,7 +6206,7 @@ function initiateRazorpay() {
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone, urgency: (isAudioReading ? selectedTarotUrgency : null) })
+    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone, urgency: (isAudioReading ? selectedTarotUrgency : null), couponCode: _appliedCoupons.t ? _appliedCoupons.t.code : null })
   })
   .then(r => r.json())
   .then(order => {
@@ -6414,6 +6504,71 @@ function adminHeaders() {
 }
 
 // ── API helpers ─────────────────────────────────────────────────────
+// ── Coupons admin screen ────────────────────────────────────────────
+async function renderCoupons(){
+  const tbody = document.getElementById('cp-tbody');
+  const empty = document.getElementById('cp-empty');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-dim);font-style:italic">Loading…</td></tr>`;
+  let coupons = [];
+  try {
+    const result = await apiGet('/coupons');
+    if (result.error) throw new Error(result.error);
+    coupons = result.coupons || [];
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-dim);font-style:italic">Couldn't load coupons right now.</td></tr>`;
+    return;
+  }
+  if (!coupons.length) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  tbody.innerHTML = coupons.map(c => `
+    <tr>
+      <td style="font-family:'Gudlak Bold',sans-serif;letter-spacing:0.05em">${c.code}</td>
+      <td>${c.discount_type === 'percent' ? c.discount_value + '% off' : '₹' + Number(c.discount_value).toLocaleString('en-IN') + ' off'}</td>
+      <td>₹${Number(c.min_amount).toLocaleString('en-IN')}</td>
+      <td><span class="badge ${c.active ? 'badge-confirmed' : ''}" style="${c.active ? '' : 'background:#ddd;color:#666'}">${c.active ? 'Active' : 'Inactive'}</span></td>
+      <td>${fmtDate(c.created_at)}</td>
+      <td><button class="cd-action-btn" onclick="toggleCoupon('${c.code}', ${!c.active})">${c.active ? 'Deactivate' : 'Activate'}</button></td>
+    </tr>`).join('');
+}
+
+async function createCoupon(){
+  const code = (document.getElementById('cp-new-code')?.value || '').trim().toUpperCase();
+  const discountType = document.getElementById('cp-new-type')?.value || 'percent';
+  const discountValue = Number(document.getElementById('cp-new-value')?.value || 0);
+  const minAmount = Number(document.getElementById('cp-new-min')?.value || 1000);
+  const statusEl = document.getElementById('cp-create-status');
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.style.color = color; statusEl.textContent = msg; } };
+
+  if (!code) { setStatus('Please enter a code.', '#c0392b'); return; }
+  if (!discountValue || discountValue <= 0) { setStatus('Please enter a valid discount value.', '#c0392b'); return; }
+
+  setStatus('Creating…', 'var(--text-muted)');
+  try {
+    const result = await apiPost('/coupons', { code, discountType, discountValue, minAmount });
+    if (result.error) throw new Error(result.error);
+    setStatus('✓ Coupon "' + code + '" created.', '#5BB888');
+    document.getElementById('cp-new-code').value = '';
+    document.getElementById('cp-new-value').value = '';
+    renderCoupons();
+  } catch (err) {
+    setStatus('✗ ' + err.message, '#c0392b');
+  }
+}
+
+async function toggleCoupon(code, activate){
+  try {
+    const result = await apiPatch('/coupons/' + encodeURIComponent(code), { active: activate });
+    if (result.error) throw new Error(result.error);
+    renderCoupons();
+  } catch (err) {
+    showToast('Could not update coupon: ' + err.message);
+  }
+}
 async function apiGet(path) {
   if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
   const r = await fetch(OCULTT_API + path, { headers: adminHeaders() });
@@ -7283,6 +7438,8 @@ function renderEHPaymentView(){
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('eh-pay-name', nameOnly || b.package || '—');
   setText('eh-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  resetCoupon('eh');
+  refreshCouponDisplay('eh');
   const payBtn = document.getElementById('eh-rzp-pay-btn');
   if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateEHRazorpay(); }; }
   const statusEl = document.getElementById('eh-rzp-status-msg');
@@ -7335,7 +7492,7 @@ function initiateEHRazorpay(){
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId: b.id, type: 'energy_healing', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone })
+    body: JSON.stringify({ bookingId: b.id, type: 'energy_healing', basePrice: b.basePrice, name: b.name, email: b.email, phone: b.phone, couponCode: _appliedCoupons.eh ? _appliedCoupons.eh.code : null })
   })
   .then(r => r.json())
   .then(order => {

@@ -1103,6 +1103,14 @@
           <div class="detail-row"><span class="detail-label">Duration</span><span class="detail-value" id="pay-duration">—</span></div>
           <div class="detail-row"><span class="detail-label">Date &amp; Time</span><span class="detail-value" id="pay-datetime">—</span></div>
           <div class="detail-row" id="pay-urgent-row" style="display:none"><span class="detail-label">Urgent Fee</span><span class="detail-value" id="pay-urgent-fee">—</span></div>
+          <div style="margin:0.75rem 0">
+            <div style="display:flex;gap:0.5rem">
+              <input type="text" id="t-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+              <button type="button" class="btn-secondary" onclick="applyCoupon('t')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+            </div>
+            <p id="t-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
+          </div>
+          <div class="detail-row" id="t-discount-row" style="display:none"><span class="detail-label">Discount</span><span class="detail-value" id="t-discount-amount" style="color:#5BB888">—</span></div>
           <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
             <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
             <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="pay-total">—</span>
@@ -1333,6 +1341,14 @@
         <div class="detail-row"><span class="detail-label">Urgency</span><span class="detail-value" id="spell-pay-urgency">—</span></div>
         <div class="detail-row"><span class="detail-label">Base Price</span><span class="detail-value" id="spell-pay-base">—</span></div>
         <div class="detail-row" id="spell-pay-urgent-row" style="display:none"><span class="detail-label">Urgent Fee</span><span class="detail-value" id="spell-pay-urgent-fee">—</span></div>
+        <div style="margin:0.75rem 0">
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" id="spell-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary" onclick="applyCoupon('spell')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+          </div>
+          <p id="spell-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
+        </div>
+        <div class="detail-row" id="spell-discount-row" style="display:none"><span class="detail-label">Discount</span><span class="detail-value" id="spell-discount-amount" style="color:#5BB888">—</span></div>
         <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
           <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
           <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="spell-pay-total">—</span>
@@ -1419,6 +1435,14 @@
         <h2>◇ Secure Payment</h2>
         <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.22em;color:var(--gold);text-transform:uppercase;margin-bottom:1rem">Complete Payment</p>
         <div class="detail-row"><span class="detail-label">Session</span><span class="detail-value" id="group-pay-session">—</span></div>
+        <div style="margin:0.75rem 0">
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" id="group-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary" onclick="applyCoupon('group')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+          </div>
+          <p id="group-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
+        </div>
+        <div class="detail-row" id="group-discount-row" style="display:none"><span class="detail-label">Discount</span><span class="detail-value" id="group-discount-amount" style="color:#5BB888">—</span></div>
         <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
           <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
           <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="group-pay-total">—</span>
@@ -1526,6 +1550,14 @@
         <h2>◇ Secure Payment</h2>
         <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.22em;color:var(--gold);text-transform:uppercase;margin-bottom:1rem">Complete Payment</p>
         <div class="detail-row"><span class="detail-label">Report</span><span class="detail-value" id="num-pay-name">—</span></div>
+        <div style="margin:0.75rem 0">
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" id="num-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary" onclick="applyCoupon('num')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+          </div>
+          <p id="num-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
+        </div>
+        <div class="detail-row" id="num-discount-row" style="display:none"><span class="detail-label">Discount</span><span class="detail-value" id="num-discount-amount" style="color:#5BB888">—</span></div>
         <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
           <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
           <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="num-pay-total">—</span>
@@ -1648,6 +1680,14 @@
         <h2>◇ Secure Payment</h2>
         <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.22em;color:var(--gold);text-transform:uppercase;margin-bottom:1rem">Complete Payment</p>
         <div class="detail-row"><span class="detail-label">Service</span><span class="detail-value" id="eh-pay-name">—</span></div>
+        <div style="margin:0.75rem 0">
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" id="eh-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary" onclick="applyCoupon('eh')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+          </div>
+          <p id="eh-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
+        </div>
+        <div class="detail-row" id="eh-discount-row" style="display:none"><span class="detail-label">Discount</span><span class="detail-value" id="eh-discount-amount" style="color:#5BB888">—</span></div>
         <div class="detail-row" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
           <span class="detail-label" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.15em">TOTAL</span>
           <span class="detail-value" style="color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:1rem;letter-spacing:0.1em" id="eh-pay-total">—</span>
@@ -1814,6 +1854,7 @@
     <div class="admin-nav-item" onclick="showAdminTab('spells',this);closeAdminSidebar()"><span>✧</span><span>Spell Requests</span></div>
     <div class="admin-nav-item" onclick="showAdminTab('analytics',this);closeAdminSidebar()"><span>◈</span><span>Analytics</span></div>
     <div class="admin-nav-item" onclick="showAdminTab('emailqueue',this);closeAdminSidebar()"><span>✉</span><span>Email Queue</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('coupons',this);closeAdminSidebar()"><span>%</span><span>Coupons</span></div>
     <div class="admin-nav-item" onclick="showAdminTab('availability',this);closeAdminSidebar()"><span>◷</span><span>Availability</span></div>
     <div class="admin-sidebar-back">
       <button class="btn-secondary" onclick="showPage('home')" style="width:100%;font-size:0.65rem;padding:0.6rem">← Back to Site</button>
@@ -2364,6 +2405,36 @@
           </div>
           <div id="eq-preview-body" style="padding:1.5rem 2rem;font-family:'Montserrat',sans-serif;font-size:1rem;line-height:1.9;color:var(--text-muted);border:1px solid var(--border);margin:1rem 1.5rem 1.5rem;background:rgba(255,255,255,0.9);white-space:pre-wrap"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- COUPONS TAB -->
+    <div id="admin-coupons" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Coupons</h1>
+        <p>Create discount codes for clients. Each code can be used once per customer, either a % off or a fixed rupee amount, and only applies above the minimum order you set.</p>
+      </div>
+      <div class="admin-table-wrap" style="margin-bottom:1.5rem">
+        <div class="admin-table-header"><h2>Create a New Coupon</h2></div>
+        <div style="padding:1.5rem 2rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;align-items:end">
+          <div class="form-group"><label>Code</label><input type="text" id="cp-new-code" placeholder="e.g. WELCOME10" style="text-transform:uppercase"></div>
+          <div class="form-group"><label>Type</label><select id="cp-new-type"><option value="percent">% Off</option><option value="fixed">₹ Off (Fixed)</option></select></div>
+          <div class="form-group"><label>Value</label><input type="number" id="cp-new-value" placeholder="e.g. 10"></div>
+          <div class="form-group"><label>Min. Order (₹)</label><input type="number" id="cp-new-min" placeholder="1000" value="1000"></div>
+          <button class="cd-action-btn" style="background:var(--gold-dk);color:#fff;height:fit-content" onclick="createCoupon()">+ Create Coupon</button>
+        </div>
+        <p id="cp-create-status" style="padding:0 2rem 1.2rem;font-family:'Montserrat',sans-serif;font-size:0.88rem;font-style:italic"></p>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>All Coupons</h2>
+          <button onclick="renderCoupons()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.4rem 0.8rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-dim)">Refresh</button>
+        </div>
+        <table>
+          <thead><tr><th>Code</th><th>Discount</th><th>Min. Order</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="cp-tbody"></tbody>
+        </table>
+        <div id="cp-empty" style="display:none;padding:3rem;text-align:center;color:var(--text-dim);font-family:'Montserrat',sans-serif;font-style:italic">No coupons yet. Create one above to offer clients a discount.</div>
       </div>
     </div>
 
