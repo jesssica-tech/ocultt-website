@@ -2175,7 +2175,7 @@ function showAdminTab(id,el){
   document.querySelectorAll('.admin-nav-item').forEach(n=>n.classList.remove('active'));
   el.classList.add('active');
   // Render live data whenever a tab is opened
-  if(id==='bookings')  renderAdminBookings();
+  if(id==='bookings')  renderAdminBookings(true);
   if(id==='customers') renderAdminCustomers();
   if(id==='dashboard') { updateAdminGreeting(); renderDashboard(); }
   if(id==='emailqueue') renderEmailQueue();
@@ -2655,7 +2655,7 @@ function initDrawCard(){
   if (isNewToday) {
     _drawState = 'idle';
     document.getElementById('aboutCardNumeral').textContent = '✦';
-    document.getElementById('aboutCardName').textContent = '';
+    document.getElementById('aboutCardName').textContent = 'Tap to Shuffle';
     document.getElementById('aboutCardSvg').innerHTML = '';
     setDrawCaption('Tap to shuffle & draw your card for today');
   } else {
@@ -3604,7 +3604,7 @@ function _legacySetBookingsFilter(filter, el) {
   setBookingsFilter('service', filter, el);
 }
 
-async function renderAdminBookings() {
+async function renderAdminBookings(forceSync) {
   const tbody  = document.getElementById('bookings-tbody');
   const empty  = document.getElementById('bookings-empty');
   const sub    = document.getElementById('bookings-sub');
@@ -3613,7 +3613,12 @@ async function renderAdminBookings() {
   // Best-effort sync with the live backend so bookings made on other
   // devices/browsers show up here too — falls back to whatever's already
   // cached locally if the live API is unreachable (see syncLiveBookingsIntoLocal).
-  await syncLiveBookingsIntoLocal();
+  // Forced (bypasses the normal 15s throttle) the moment someone actually
+  // opens the Bookings tab, so "All Bookings" can never show a stale/partial
+  // list just because a previous sync happened recently elsewhere in the CRM
+  // — that was the cause of bookings appearing to only show up once a more
+  // specific filter (like "Yesterday") happened to trigger a fresh sync.
+  await syncLiveBookingsIntoLocal(forceSync);
 
   const q = (document.getElementById('booking-search')?.value || '').toLowerCase();
   let bookings = OculttDB.getBookings();
@@ -6710,9 +6715,9 @@ function _mapRemoteBookingToLocal(r) {
 // up near renderDashboard() (which calls this on every page load, before
 // this point in the file — moved there in v187 to fix a real
 // "Cannot access before initialization" crash on first page load).
-async function syncLiveBookingsIntoLocal() {
+async function syncLiveBookingsIntoLocal(force) {
   if (!OCULTT_BACKEND_CONNECTED || !getAdminKey()) return false;
-  if (Date.now() - _lastLiveBookingsSyncAt < LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS) return false;
+  if (!force && Date.now() - _lastLiveBookingsSyncAt < LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS) return false;
   try {
     const { bookings, error } = await apiGet('/bookings');
     if (error) throw new Error(error);
