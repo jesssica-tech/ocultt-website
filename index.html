@@ -71,25 +71,31 @@
     <a onclick="scrollToSection('testimonials')">Testimonials</a>
     <a onclick="showPage('shop')">Shop</a>
   </div>
-  <button class="nav-book" onclick="showPage('tarot-booking')">Book a Session</button>
-  <!-- Desktop/tablet/laptop-only kebab menu: Book a Session + Sign In, tucked
-       behind a 3-dot menu instead of shown directly. Hidden on mobile (see
-       768px block) — the hamburger drawer already covers both there. -->
-  <div class="nav-kebab-wrap" id="navKebabWrap">
-    <button class="nav-kebab" id="navKebabBtn" onclick="toggleNavKebab()" aria-label="More options" aria-haspopup="true" aria-expanded="false" aria-controls="navKebabMenu">
-      <span></span><span></span><span></span>
-    </button>
-    <div class="nav-kebab-menu" id="navKebabMenu" role="menu">
-      <div class="nav-kebab-item" role="menuitem" onclick="closeNavKebab();showPage('tarot-booking')">Book a Session</div>
-      <div class="nav-kebab-divider"></div>
-      <!-- Auth: shown/hidden by JS -->
-      <div class="nav-auth" id="navAuth">
-        <span class="nav-signin-link" id="navSigninLink" onclick="closeNavKebab();openGauthModal()" title="Sign in with Google">Sign In</span>
-        <div class="nav-user-pill" id="navUserPill" style="display:none">
-          <div class="nav-user-avatar" id="navUserAvatar"></div>
-          <span class="nav-user-name" id="navUserName"></span>
+  <!-- Book a Session + the kebab menu sit together as one group (small
+       fixed gap between them), so nav's space-between only opens up ONE
+       gap — between the links and this whole group — instead of also
+       spreading Book a Session away from the kebab menu. -->
+  <div class="nav-actions">
+    <button class="nav-book" onclick="showPage('tarot-booking')">Book a Session</button>
+    <!-- Desktop/tablet/laptop-only kebab menu: Book a Session + Sign In, tucked
+         behind a 3-dot menu instead of shown directly. Hidden on mobile (see
+         768px block) — the hamburger drawer already covers both there. -->
+    <div class="nav-kebab-wrap" id="navKebabWrap">
+      <button class="nav-kebab" id="navKebabBtn" onclick="toggleNavKebab()" aria-label="More options" aria-haspopup="true" aria-expanded="false" aria-controls="navKebabMenu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-kebab-menu" id="navKebabMenu" role="menu">
+        <div class="nav-kebab-item" role="menuitem" onclick="closeNavKebab();showPage('tarot-booking')">Book a Session</div>
+        <div class="nav-kebab-divider"></div>
+        <!-- Auth: shown/hidden by JS -->
+        <div class="nav-auth" id="navAuth">
+          <span class="nav-signin-link" id="navSigninLink" onclick="closeNavKebab();openGauthModal()" title="Sign in with Google">Sign In</span>
+          <div class="nav-user-pill" id="navUserPill" style="display:none">
+            <div class="nav-user-avatar" id="navUserAvatar"></div>
+            <span class="nav-user-name" id="navUserName"></span>
+          </div>
+          <button class="nav-logout" id="navLogoutBtn" style="display:none" onclick="closeNavKebab();gauthSignOut()">Logout</button>
         </div>
-        <button class="nav-logout" id="navLogoutBtn" style="display:none" onclick="closeNavKebab();gauthSignOut()">Logout</button>
       </div>
     </div>
   </div>

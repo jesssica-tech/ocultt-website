@@ -45,12 +45,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .nav-links a{font-family:'Gudlak Bold',sans-serif;font-size:0.72rem;letter-spacing:0.18em;color:var(--text-muted);text-decoration:none;cursor:pointer;transition:color 0.3s,text-shadow 0.3s;text-transform:uppercase}
 .nav-links a:hover{color:var(--gold);text-shadow:0 0 12px rgba(46,139,110,0.3)}
 .nav-book{background:transparent;border:1.5px solid var(--gold);color:var(--gold-dk);font-family:'Gudlak Bold',sans-serif;font-size:0.74rem;font-weight:600;letter-spacing:0.18em;padding:0.65rem 1.35rem;cursor:pointer;transition:all 0.3s;text-transform:uppercase;position:relative;overflow:hidden;border-radius:4px}
-@media(min-width:769px){
-  /* Book a Session first, then the 3-dot menu right after it — both sit
-     together at the far right corner of the header, dots last/rightmost. */
-  .nav-book{order:2}
-  .nav-kebab-wrap{order:3}
-}
+/* Book a Session + the kebab menu travel together as one flex item within
+   nav's space-between, with a small fixed gap between just the two of
+   them — this is what keeps them sitting right next to each other in the
+   corner instead of nav's own space-between prying them apart too. */
+.nav-actions{display:flex;align-items:center;gap:0.75rem}
 .nav-book::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(46,139,110,0.15),transparent);opacity:0;transition:opacity 0.3s}
 .nav-book:hover{background:var(--gold);color:var(--bg);box-shadow:0 0 20px rgba(46,139,110,0.3)}
 .nav-book:hover::before{opacity:1}
@@ -1170,7 +1169,8 @@ tr:hover td{background:rgba(46,139,110,0.03)}
   .nav-hamburger{display:flex}
   .nav-drawer-overlay{display:block}
   nav{padding:0.85rem 1.1rem;gap:0.6rem}
-  .nav-book{font-size:0.66rem;padding:0.6rem 1rem;letter-spacing:0.12em;margin-left:auto}
+  .nav-book{font-size:0.66rem;padding:0.6rem 1rem;letter-spacing:0.12em}
+  .nav-actions{margin-left:auto;margin-right:0.6rem}
   /* The desktop-only kebab menu (Book a Session + Sign In) stays out of the
      top bar entirely on mobile — the nav-drawer (hamburger menu) already has
      its own Book a Session button + Sign In entry, so this is never shown

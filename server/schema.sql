@@ -245,3 +245,16 @@ alter table bookings add column if not exists discount_amount numeric;
 -- actual email sent straight from the CRM.
 -- ═══════════════════════════════════════════════════════════════════
 alter table bookings add column if not exists attachments_json jsonb default '[]'::jsonb;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- PayPal (international customers) — Razorpay's international-cards
+-- request was rejected by their banking partners, so non-Indian
+-- customers pay via a separate PayPal checkout instead (see
+-- server/routes/paypal.js). payment_provider distinguishes which
+-- gateway a booking came through; currency/amount_paid record what was
+-- actually charged, since PayPal orders are in USD, not INR, and there's
+-- no Razorpay-style "fetch the order later" for a price label.
+-- ═══════════════════════════════════════════════════════════════════
+alter table bookings add column if not exists payment_provider text default 'razorpay';
+alter table bookings add column if not exists currency text default 'INR';
+alter table bookings add column if not exists amount_paid numeric;
