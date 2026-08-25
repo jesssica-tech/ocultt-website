@@ -51,9 +51,21 @@ function assertConfigured() {
 
 function buildTransporter() {
   return {
-    async sendMail({ from, to, subject, html, text }) {
+    async sendMail({ from, to, subject, html, text, attachments }) {
       assertConfigured();
       const { apiKey, fromAddress } = resolveConfig();
+
+      const body = {
+        from: from || fromAddress,
+        to: [to],
+        subject: subject || '',
+        html: html || undefined,
+        text: text || (html ? undefined : '')
+      };
+      // Resend expects base64-encoded content per attachment: [{ filename, content }]
+      if (Array.isArray(attachments) && attachments.length) {
+        body.attachments = attachments.map(a => ({ filename: a.filename, content: a.content }));
+      }
 
       const res = await fetch(RESEND_API_URL, {
         method: 'POST',
@@ -61,14 +73,8 @@ function buildTransporter() {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          from: from || fromAddress,
-          to: [to],
-          subject: subject || '',
-          html: html || undefined,
-          text: text || (html ? undefined : '')
-        }),
-        signal: AbortSignal.timeout(10000)
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000)
       });
 
       const data = await res.json().catch(() => ({}));

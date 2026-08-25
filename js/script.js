@@ -429,7 +429,7 @@ function showPage(id, fromPopstate){
     if(id==='group-booking'){document.getElementById('group-form-view').style.display='block';document.getElementById('group-success-view').style.display='none';}
     if(id==='energy-healing'){document.getElementById('eh-form-view').style.display='block';document.getElementById('eh-success-view').style.display='none';}
     if(id==='numerology-booking'){document.getElementById('num-form-view').style.display='block';document.getElementById('num-success-view').style.display='none';}
-    if(id==='admin'){updateAdminGreeting();renderDashboard();}
+    if(id==='admin'){updateAdminGreeting();renderDashboard(true);}
     const bookingPages=['tarot-booking','spell-booking','group-booking','numerology-booking'];
     const aiBtn=document.getElementById('aiGuideBtn');
     if(aiBtn)aiBtn.classList.toggle('ai-guide-hidden', bookingPages.includes(id));
@@ -2177,7 +2177,7 @@ function showAdminTab(id,el){
   // Render live data whenever a tab is opened
   if(id==='bookings')  renderAdminBookings(true);
   if(id==='customers') renderAdminCustomers();
-  if(id==='dashboard') { updateAdminGreeting(); renderDashboard(); }
+  if(id==='dashboard') { updateAdminGreeting(); renderDashboard(true); }
   if(id==='emailqueue') renderEmailQueue();
   if(id==='availability') renderAvailabilityBlocks();
   if(id==='spells') renderAdminSpells();
@@ -3067,6 +3067,20 @@ const OculttDB = (() => {
     all[key][category].push(fileMeta);
     save(ATTACHMENTS_KEY, all);
   }
+  // Patches one attachment's metadata in place — used to record the
+  // server-side (Cloudinary) attachment id onto a local file entry once
+  // its background upload to the booking's real attachments_json
+  // completes, so removing it locally can also clean it up server-side.
+  function patchCustomerAttachment(email, category, fileId, patch) {
+    let all = load(ATTACHMENTS_KEY);
+    if (Array.isArray(all)) all = {};
+    const key = (email || '').toLowerCase();
+    if (!all[key] || !all[key][category]) return;
+    const idx = all[key][category].findIndex(f => f.id === fileId);
+    if (idx === -1) return;
+    all[key][category][idx] = { ...all[key][category][idx], ...patch };
+    save(ATTACHMENTS_KEY, all);
+  }
   function removeCustomerAttachment(email, category, fileId) {
     let all = load(ATTACHMENTS_KEY);
     if (Array.isArray(all)) all = {};
@@ -3241,7 +3255,7 @@ const OculttDB = (() => {
     save(CUSTOMERS_KEY, customers);
   }
 
-  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount, mergeRemoteBookings, mergeRemoteUsers };
+  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, patchCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount, mergeRemoteBookings, mergeRemoteUsers };
 })();
 
 // ════════════════════════════════════════════════════════════════════
@@ -3564,7 +3578,11 @@ function setBookingsQuickView(view, el){
   syncRow('status', _bookingsFilterStatus);
   syncRow('priority', 'all');
 
-  renderAdminBookings();
+  // Force a real sync here (not just on first opening the Bookings tab) —
+  // this is the button Akanksha actually checks against "did today's
+  // booking come through", so it must never show a stale snapshot just
+  // because the normal 15s throttle hasn't elapsed yet.
+  renderAdminBookings(true);
 }
 
 function setBookingsFilter(axis, value, el) {
@@ -3587,12 +3605,15 @@ function setBookingsFilter(axis, value, el) {
   const cdPicker = document.getElementById('bookings-custom-date');
   if (cdPicker) cdPicker.style.display = (axis === 'when' && value === 'custom') ? 'inline-block' : (cdPicker.style.display);
   if (value !== 'custom' && axis === 'when') { _bookingsFilterCustomDate = ''; if (cdPicker) cdPicker.style.display = 'none'; }
-  renderAdminBookings();
+  // Same reasoning as setBookingsQuickView — the WHEN row (All/Today/
+  // Yesterday/etc.) is exactly what's being checked for "is it here yet",
+  // so force a fresh sync rather than risk a stale throttled snapshot.
+  renderAdminBookings(axis === 'when');
 }
 
 function setBookingsCustomDate(val) {
   _bookingsFilterCustomDate = val || '';
-  renderAdminBookings();
+  renderAdminBookings(true);
 }
 
 // Keep legacy single-arg form working (used in existing onclick= attributes above)
@@ -4045,13 +4066,19 @@ function faFormatDuration(sec){
   return m + ':' + String(s).padStart(2,'0');
 }
 
-function renderFilesAttachments(email, containerId){
+function renderFilesAttachments(email, containerId, bookingId){
   const container = document.getElementById(containerId);
   if (!container) return;
   container.dataset.email = email;
+  // Persist bookingId across internal re-renders (after an upload/delete)
+  // that only call renderFilesAttachments(email, containerId) with no 3rd
+  // arg — without this, the Send-to-Client bar would vanish the moment a
+  // file is added or removed.
+  if (bookingId) container.dataset.bookingId = bookingId;
+  else bookingId = container.dataset.bookingId || '';
   const stored = OculttDB.getCustomerAttachments(email);
 
-  container.innerHTML = Object.entries(FA_CATEGORIES).map(([cat, cfg]) => {
+  let html = Object.entries(FA_CATEGORIES).map(([cat, cfg]) => {
     const files = stored[cat] || [];
     const dzId = `fa-input-${containerId}-${cat}`;
     return `
@@ -4077,6 +4104,96 @@ function renderFilesAttachments(email, containerId){
         }
       </div>`;
   }).join('');
+
+  // ── Consolidated "Send to Client" bar — only in the Booking Details
+  // panel (where we have a specific bookingId to send for), not in the
+  // Customer Profile's file list, which isn't tied to a single booking.
+  // Lets Akanksha write one message and send everything ready to go in one
+  // action — a real, server-sent email, all from inside the CRM.
+  if (bookingId) {
+    const b = OculttDB.getBookings().find(x => x.id === bookingId);
+    const audioFiles = (stored.audio || []).length;
+    const hasRealRecording = !!(b && b.video_url);
+    const recordingSent    = !!(b && b.video_sent);
+    const recordingLine = hasRealRecording
+      ? (recordingSent ? '✓ Recording already sent to client' : '🎥 Recording ready to send')
+      : '🎥 No recording uploaded yet (use the Booking Details recorder to add one)';
+    const cloudImages = (stored.images || []).filter(f => f.cloudAttachmentId).length;
+    const cloudDocs   = (stored.reports || []).filter(f => f.cloudAttachmentId).length;
+    const pendingImages = (stored.images || []).length - cloudImages;
+    const pendingDocs   = (stored.reports || []).length - cloudDocs;
+    const attachLine = (cloudImages + cloudDocs) > 0
+      ? `📎 ${cloudImages} image(s) and ${cloudDocs} document(s) will be attached to the email`
+      : '';
+    const pendingLine = (pendingImages + pendingDocs) > 0
+      ? `⏳ ${pendingImages + pendingDocs} file(s) still uploading — wait a moment before sending so they're included`
+      : '';
+    const audioNote = audioFiles > 0
+      ? `${audioFiles} audio file above ${audioFiles===1?'is':'are'} saved here for reference only (use the recorder above for a sendable audio link).`
+      : '';
+    html += `
+      <div class="fa-send-all-bar" style="margin-top:1.75rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+        <p class="cd-section-label">Send to Client</p>
+        <textarea id="fa-send-message-${containerId}" placeholder="Write a note to include (optional)…" style="width:100%;min-height:70px;padding:0.7rem 0.9rem;border:1px solid var(--border);background:rgba(255,255,255,0.7);font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text);resize:vertical;margin-bottom:0.6rem;box-sizing:border-box"></textarea>
+        <p style="font-family:'Montserrat',sans-serif;font-size:0.82rem;color:var(--text-muted);margin-bottom:0.3rem">${recordingLine}</p>
+        ${attachLine ? `<p style="font-family:'Montserrat',sans-serif;font-size:0.82rem;color:var(--text-muted);margin-bottom:0.3rem">${attachLine}</p>` : ''}
+        ${pendingLine ? `<p style="font-family:'Montserrat',sans-serif;font-size:0.8rem;color:#946C4F;margin-bottom:0.3rem">${pendingLine}</p>` : ''}
+        ${audioNote ? `<p style="font-family:'Montserrat',sans-serif;font-size:0.78rem;color:var(--text-dim);font-style:italic;margin-bottom:0.3rem">${audioNote}</p>` : ''}
+        <button type="button" class="cd-action-btn" style="background:var(--gold-dk);color:#fff;margin-top:0.6rem" id="fa-send-btn-${containerId}" onclick="sendAllToClient('${bookingId}','${containerId}')">📤 Send Everything to Client</button>
+        <p id="fa-send-status-${containerId}" style="font-family:'Montserrat',sans-serif;font-size:0.82rem;margin-top:0.6rem"></p>
+      </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ── One consolidated, real send — straight from the CRM, nothing else
+// opens. The server sends one email containing Akanksha's note, the
+// recording link (if any), and every uploaded image/document as a real
+// attachment (see server/routes/attachments.js's /send-all).
+async function sendAllToClient(bookingId, containerId){
+  const btn = document.getElementById('fa-send-btn-' + containerId);
+  const statusEl = document.getElementById('fa-send-status-' + containerId);
+  const msgEl = document.getElementById('fa-send-message-' + containerId);
+  const message = (msgEl && msgEl.value || '').trim();
+  const b = OculttDB.getBookings().find(x => x.id === bookingId);
+  if (!b) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  if (statusEl) { statusEl.style.color = 'var(--text-muted)'; statusEl.textContent = 'Sending…'; }
+
+  try {
+    if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
+    const r = await fetch(OCULTT_API + '/bookings/' + bookingId + '/send-all', {
+      method: 'POST',
+      headers: { 'x-admin-key': getAdminKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+    const result = await r.json();
+    if (!result.success) throw new Error(result.error || 'Send failed');
+
+    let statusMsg = '✓ Sent.';
+    if (result.recordingIncluded) statusMsg += ' Recording link included.';
+    if (result.attachmentsSent) statusMsg += ` ${result.attachmentsSent} file(s) attached.`;
+    if (result.skipped && result.skipped.length) statusMsg += ` (Couldn't include: ${result.skipped.join(', ')} — too large or unavailable.)`;
+    if (statusEl) { statusEl.style.color = '#5BB888'; statusEl.textContent = statusMsg; }
+    if (btn) { btn.textContent = '✓ Sent'; }
+    if (msgEl) msgEl.value = '';
+
+    // Reflect the (possibly now-sent) recording status locally too.
+    const bookings = OculttDB.getBookings();
+    const idx = bookings.findIndex(x => x.id === bookingId);
+    if (idx > -1 && result.recordingIncluded) {
+      bookings[idx].video_sent = true;
+      bookings[idx].video_sent_at = new Date().toISOString();
+      OculttDB.saveBooking(bookings[idx]);
+    }
+    renderFilesAttachments(b.email, containerId, bookingId);
+  } catch (err) {
+    console.error('[sendAllToClient]', err.message);
+    if (statusEl) { statusEl.style.color = '#c0392b'; statusEl.textContent = '✗ ' + err.message; }
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Send Everything to Client'; }
+  }
 }
 
 function faRenderFileRow(f, email, cat, containerId){
@@ -4135,6 +4252,14 @@ function faHandleFiles(email, cat, fileList, containerId){
   if (progWrap) progWrap.style.display = 'block';
   if (progBar) progBar.style.width = '0%';
 
+  // Images/documents also get durably uploaded to the booking itself (see
+  // attachments.js) — this is what makes them real, sendable files instead
+  // of a browser preview that vanishes on reload. Video/audio in this
+  // panel are untouched — those keep working exactly as they do today.
+  const container = document.getElementById(containerId);
+  const bookingId = container ? container.dataset.bookingId : '';
+  const backendCategory = cat === 'images' ? 'image' : cat === 'reports' ? 'document' : null;
+
   let done = 0;
   files.forEach(file => {
     faProcessOneFile(file, cat, (meta) => {
@@ -4149,8 +4274,39 @@ function faHandleFiles(email, cat, fileList, containerId){
           refreshVisibleCrmTables();
         }, 250);
       }
+      if (bookingId && backendCategory) faUploadAttachmentToServer(bookingId, file, backendCategory, email, cat, meta.id, containerId);
     });
   });
+}
+
+// ── Background real upload for images/documents — happens alongside the
+// existing local preview, doesn't block or change that flow. Once it
+// succeeds, the real server-side attachment id is stamped onto the local
+// file record so deleting it locally can also clean it up server-side.
+async function faUploadAttachmentToServer(bookingId, file, backendCategory, email, cat, localFileId, containerId){
+  const statusEl = document.getElementById('fa-send-status-' + containerId);
+  try {
+    if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet');
+    const formData = new FormData();
+    formData.append('file', file, file.name || backendCategory);
+    formData.append('category', backendCategory);
+    const r = await fetch(OCULTT_API + '/bookings/' + bookingId + '/attachments/upload', {
+      method: 'POST',
+      headers: { 'x-admin-key': getAdminKey() },
+      body: formData
+    });
+    const result = await r.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
+    OculttDB.patchCustomerAttachment(email, cat, localFileId, { cloudAttachmentId: result.attachment.id });
+    // Keep the local booking cache in sync too, so Send Everything sees it
+    // immediately without waiting on the next full bookings sync.
+    const bookings = OculttDB.getBookings();
+    const idx = bookings.findIndex(b => b.id === bookingId);
+    if (idx > -1) { bookings[idx].attachments_json = result.attachments; OculttDB.saveBooking(bookings[idx]); }
+  } catch (err) {
+    console.warn('[faUploadAttachmentToServer]', err.message);
+    if (statusEl) { statusEl.style.color = '#c0392b'; statusEl.textContent = `"${file.name}" is only saved here for now — it couldn't be uploaded for sending (${err.message}). It still shows above.`; }
+  }
 }
 
 function faProcessOneFile(file, cat, callback){
@@ -4209,9 +4365,27 @@ function faProcessOneFile(file, cat, callback){
 
 function faRemoveFile(email, cat, fileId, containerId){
   if (!confirm('Delete this file? This cannot be undone.')) return;
+  const stored = OculttDB.getCustomerAttachments(email);
+  const f = (stored[cat] || []).find(x => x.id === fileId);
   OculttDB.removeCustomerAttachment(email, cat, fileId);
   renderFilesAttachments(email, containerId);
   refreshVisibleCrmTables();
+  // If this file was also uploaded for real (see faUploadAttachmentToServer),
+  // remove it there too — otherwise it would still go out next time
+  // "Send Everything to Client" is used, even though it's gone from view.
+  const container = document.getElementById(containerId);
+  const bookingId = container ? container.dataset.bookingId : '';
+  if (f && f.cloudAttachmentId && bookingId && OCULTT_BACKEND_CONNECTED) {
+    fetch(OCULTT_API + '/bookings/' + bookingId + '/attachments/' + f.cloudAttachmentId, {
+      method: 'DELETE', headers: { 'x-admin-key': getAdminKey() }
+    }).then(r => r.json()).then(result => {
+      if (result && result.success) {
+        const bookings = OculttDB.getBookings();
+        const idx = bookings.findIndex(b => b.id === bookingId);
+        if (idx > -1) { bookings[idx].attachments_json = result.attachments; OculttDB.saveBooking(bookings[idx]); }
+      }
+    }).catch(err => console.warn('[faRemoveFile] server-side cleanup failed:', err.message));
+  }
 }
 
 function faRenameFile(email, cat, fileId, containerId){
@@ -4566,7 +4740,7 @@ function openBookingDetail(bookingId) {
   // to the customer's email and visible from any of their booking detail panels ──
   const attachWrap = document.getElementById('bd-attachments-wrap');
   attachWrap.style.display = 'block';
-  renderFilesAttachments(b.email, 'bd-attachments');
+  renderFilesAttachments(b.email, 'bd-attachments', b.id);
 
   overlay.style.display = 'block';
   panel.style.display = 'block';
@@ -5167,11 +5341,11 @@ async function syncSignedInUsersIntoLocal() {
     return false;
   }
 }
-async function renderDashboard() {
+async function renderDashboard(forceSync) {
   // Best-effort sync with the live backend so today's stats reflect bookings
   // made on other devices/browsers too — falls back to local data if the
   // live API is unreachable or this isn't an authenticated admin session.
-  await syncLiveBookingsIntoLocal();
+  await syncLiveBookingsIntoLocal(forceSync);
   // Same idea, but for customer accounts (Google sign-ins) — including
   // someone who signed in but hasn't booked yet, who otherwise wouldn't
   // show up anywhere in the CRM.

@@ -233,3 +233,15 @@ create index if not exists idx_coupon_redemptions_code on coupon_redemptions(cou
 -- always Razorpay's own order.amount, never trusted from this column.
 alter table bookings add column if not exists coupon_code text;
 alter table bookings add column if not exists discount_amount numeric;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- V190 — real image/document storage + the "Send Everything to Client"
+-- feature (server/routes/attachments.js). Each entry:
+--   { id, category: 'image'|'document', publicId, resourceType,
+--     originalName, size, uploadedAt }
+-- Previously these lived only as browser blob: URLs (never persisted —
+-- gone on refresh); now they're real Cloudinary files, same pattern as
+-- the video/audio recorder, so they survive and can be attached to an
+-- actual email sent straight from the CRM.
+-- ═══════════════════════════════════════════════════════════════════
+alter table bookings add column if not exists attachments_json jsonb default '[]'::jsonb;
