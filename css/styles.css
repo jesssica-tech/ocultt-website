@@ -46,9 +46,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .nav-links a:hover{color:var(--gold);text-shadow:0 0 12px rgba(46,139,110,0.3)}
 .nav-book{background:transparent;border:1.5px solid var(--gold);color:var(--gold-dk);font-family:'Gudlak Bold',sans-serif;font-size:0.74rem;font-weight:600;letter-spacing:0.18em;padding:0.65rem 1.35rem;cursor:pointer;transition:all 0.3s;text-transform:uppercase;position:relative;overflow:hidden;border-radius:4px}
 @media(min-width:769px){
-  /* Move the kebab menu to the far right of the desktop header, past Book a Session */
-  .nav-kebab-wrap{order:2}
-  .nav-book{order:3}
+  /* Book a Session first, then the kebab menu at the far right of the desktop header */
+  .nav-book{order:2}
+  .nav-kebab-wrap{order:3}
 }
 .nav-book::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(46,139,110,0.15),transparent);opacity:0;transition:opacity 0.3s}
 .nav-book:hover{background:var(--gold);color:var(--bg);box-shadow:0 0 20px rgba(46,139,110,0.3)}

@@ -3200,7 +3200,48 @@ const OculttDB = (() => {
     save(BOOKINGS_KEY, bookings);
   }
 
-  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount, mergeRemoteBookings };
+  // ── mergeRemoteUsers — upserts customer *accounts* (people who signed in
+  // with Google, whether or not they've ever booked yet) fetched from the
+  // live backend (GET /api/users) into the local customers list. Without
+  // this, a sign-in-only visitor (no booking) never appears anywhere in the
+  // CRM, since the Customers list is otherwise built purely from bookings.
+  function mergeRemoteUsers(remoteUsers) {
+    if (!Array.isArray(remoteUsers) || !remoteUsers.length) return;
+    const customers = load(CUSTOMERS_KEY);
+    remoteUsers.forEach(u => {
+      if (!u || !u.email) return;
+      const idx = customers.findIndex(c => (c.email || '').toLowerCase() === u.email.toLowerCase());
+      if (idx === -1) {
+        // Signed in, never booked — add them as a customer so Akanksha can
+        // see they exist, distinct from someone who's actually booked.
+        customers.push({
+          name: u.name || u.email,
+          email: u.email,
+          phone: '',
+          services: [],
+          sessions: 0,
+          lastBooking: null,
+          status: 'Signed Up',
+          firstSeen: u.created_at || u.last_login_at || new Date().toISOString(),
+          uid: u.uid || '',
+          picture: u.picture || '',
+          accountLinked: true
+        });
+      } else {
+        // Already a customer (has a booking) — just carry the account
+        // details onto their existing record, same as linkCustomerAccount().
+        customers[idx] = {
+          ...customers[idx],
+          uid: u.uid || customers[idx].uid || '',
+          picture: u.picture || customers[idx].picture || '',
+          accountLinked: true
+        };
+      }
+    });
+    save(CUSTOMERS_KEY, customers);
+  }
+
+  return { saveBooking, getBookings, getCustomers, clearBookings, getAvailabilityBlocks, addAvailabilityBlock, removeAvailabilityBlock, getAvailabilityIndex, getSessionNote, saveSessionNote, getCustomerAttachments, saveCustomerAttachment, removeCustomerAttachment, renameCustomerAttachment, updateCustomer, getFollowUp, saveFollowUp, getBookingNotes, addBookingNote, getCustomerNotes, addCustomerNote, logActivity, getActivity, linkCustomerAccount, mergeRemoteBookings, mergeRemoteUsers };
 })();
 
 // ════════════════════════════════════════════════════════════════════
@@ -5103,11 +5144,33 @@ function editSessionNote(bookingId, clientName) {
   renderSessionHistory();
 }
 
+let _lastLiveBookingsSyncAt = 0;
+const LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS = 15000;
+let _lastSignedInUsersSyncAt = 0;
+const SIGNED_IN_USERS_SYNC_MIN_INTERVAL_MS = 15000;
+async function syncSignedInUsersIntoLocal() {
+  if (!OCULTT_BACKEND_CONNECTED || !getAdminKey()) return false;
+  if (Date.now() - _lastSignedInUsersSyncAt < SIGNED_IN_USERS_SYNC_MIN_INTERVAL_MS) return false;
+  try {
+    const { users, error } = await apiGet('/users');
+    if (error) throw new Error(error);
+    OculttDB.mergeRemoteUsers(users || []);
+    _lastSignedInUsersSyncAt = Date.now();
+    return true;
+  } catch (err) {
+    console.warn('[syncSignedInUsersIntoLocal] live API unavailable, using local data only:', err.message);
+    return false;
+  }
+}
 async function renderDashboard() {
   // Best-effort sync with the live backend so today's stats reflect bookings
   // made on other devices/browsers too — falls back to local data if the
   // live API is unreachable or this isn't an authenticated admin session.
   await syncLiveBookingsIntoLocal();
+  // Same idea, but for customer accounts (Google sign-ins) — including
+  // someone who signed in but hasn't booked yet, who otherwise wouldn't
+  // show up anywhere in the CRM.
+  await syncSignedInUsersIntoLocal();
 
   const bookings  = OculttDB.getBookings().filter(b => !b.archived);
   const customers = OculttDB.getCustomers();
@@ -6643,8 +6706,10 @@ function _mapRemoteBookingToLocal(r) {
     createdAt: r.created_at, updatedAt: r.updated_at
   };
 }
-let _lastLiveBookingsSyncAt = 0;
-const LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS = 15000;
+// _lastLiveBookingsSyncAt / LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS are declared
+// up near renderDashboard() (which calls this on every page load, before
+// this point in the file — moved there in v187 to fix a real
+// "Cannot access before initialization" crash on first page load).
 async function syncLiveBookingsIntoLocal() {
   if (!OCULTT_BACKEND_CONNECTED || !getAdminKey()) return false;
   if (Date.now() - _lastLiveBookingsSyncAt < LIVE_BOOKINGS_SYNC_MIN_INTERVAL_MS) return false;

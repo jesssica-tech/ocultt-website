@@ -13,6 +13,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 const { supabase } = require('../db');
+const adminAuth = require('../middleware/adminAuth');
 
 const router = express.Router();
 
@@ -68,6 +69,29 @@ router.post('/users/sync', syncLimiter, async (req, res) => {
   }
 
   res.json({ ok: true });
+});
+
+// ── GET /api/users ── admin-only. Lets the CRM dashboard pull in every
+// customer who has ever signed in with Google, including someone who
+// signed in but never booked yet — those wouldn't otherwise appear
+// anywhere in the CRM, since the existing Customers list is built only
+// from bookings. Merged into the local customer list client-side (see
+// mergeRemoteUsers in js/script.js) the same way live bookings already
+// are, so no new UI section is needed — they just show up as customers.
+router.get('/users', adminAuth, async (req, res) => {
+  if (!supabase) return res.status(503).json({ ok: false, error: 'Database not configured yet.' });
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('uid, name, email, picture, created_at, last_login_at')
+    .order('last_login_at', { ascending: false });
+
+  if (error) {
+    console.error('[GET /users] Supabase error:', error.message);
+    return res.status(500).json({ ok: false, error: 'Could not load accounts.' });
+  }
+
+  res.json({ ok: true, users: data || [] });
 });
 
 module.exports = router;
