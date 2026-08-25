@@ -435,6 +435,8 @@ function showPage(id, fromPopstate){
     if(aiBtn)aiBtn.classList.toggle('ai-guide-hidden', bookingPages.includes(id));
     const backPill=document.getElementById('floatingBackPill');
     if(backPill)backPill.classList.toggle('show', id!=='home' && id!=='admin');
+    if(typeof closeNavKebab==='function') closeNavKebab();
+    if(typeof prefillSavedContactInfo==='function') prefillSavedContactInfo();
   };
   // Only play the leave-transition if there's a different page currently showing,
   // and the person hasn't asked for reduced motion. Otherwise switch instantly.
@@ -522,6 +524,39 @@ function toggleNavDrawer(){
     openNavDrawer();
   }
 }
+
+/* ── DESKTOP/TABLET/LAPTOP KEBAB MENU (Book a Session + Sign In) ── */
+function openNavKebab(){
+  const wrap=document.getElementById('navKebabWrap');
+  const btn=document.getElementById('navKebabBtn');
+  if(!wrap||!btn)return;
+  wrap.classList.add('is-open');
+  btn.setAttribute('aria-expanded','true');
+}
+function closeNavKebab(){
+  const wrap=document.getElementById('navKebabWrap');
+  const btn=document.getElementById('navKebabBtn');
+  if(!wrap||!btn)return;
+  wrap.classList.remove('is-open');
+  btn.setAttribute('aria-expanded','false');
+}
+function toggleNavKebab(){
+  const wrap=document.getElementById('navKebabWrap');
+  if(wrap && wrap.classList.contains('is-open')){
+    closeNavKebab();
+  } else {
+    openNavKebab();
+  }
+}
+// Close on outside click / Escape, so it behaves like a normal dropdown.
+document.addEventListener('click', function(e){
+  const wrap=document.getElementById('navKebabWrap');
+  if(!wrap || !wrap.classList.contains('is-open'))return;
+  if(!wrap.contains(e.target)) closeNavKebab();
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape') closeNavKebab();
+});
 /* Close drawer on Escape */
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeNavDrawer();}});
 
@@ -2655,7 +2690,10 @@ function playShuffleThenDraw(){
   setDrawCaption('Shuffling the deck…');
 
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const shuffleDuration = reduceMotion ? 400 : 3000;
+  // Even with reduced motion, keep the shuffle on screen long enough (a few
+  // interval ticks) to actually be visible — 400ms was so short it read as
+  // "no shuffle happened" on devices/browsers with this preference set.
+  const shuffleDuration = reduceMotion ? 900 : 3000;
 
   const shuffleInterval = setInterval(() => {
     const randIdx = Math.floor(Math.random() * ABOUT_TAROT_CARDS.length);
@@ -2677,7 +2715,7 @@ function playDrawCycle(){
   setDrawCaption('Drawing your card…');
 
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const totalCycles = reduceMotion ? 2 : 14;
+  const totalCycles = reduceMotion ? 5 : 14;
   let cycles = 0;
 
   const cycleInterval = setInterval(() => {
@@ -7657,4 +7695,71 @@ function initiateEHRazorpay(){
       return r;
     };
   }
+})();
+
+// ── Remember & prefill returning-customer contact details (v186) ──
+// So a repeat visitor booking a second service (or re-doing a form after
+// leaving it) doesn't have to retype name/email/phone every time. We do NOT
+// remember per-participant Group Magic fields (g-p1-dob, g-p2-name, etc.) —
+// only the main booker's own name/email/phone/dob, since those other fields
+// often belong to someone else entirely.
+(function () {
+  const STORE_KEY = 'ocultt_saved_contact_v1';
+  const FIELD_SUFFIXES = ['-name', '-email', '-phone', '-dob'];
+
+  function isOwnField(id) {
+    // Exclude participant-indexed fields like g-p1-name, g-p2-dob, etc.
+    if (/-p\d+-/.test(id)) return false;
+    return FIELD_SUFFIXES.some(function (suf) { return id.endsWith(suf); });
+  }
+
+  function fieldKind(id) {
+    if (id.endsWith('-name')) return 'name';
+    if (id.endsWith('-email')) return 'email';
+    if (id.endsWith('-phone')) return 'phone';
+    if (id.endsWith('-dob')) return 'dob';
+    return null;
+  }
+
+  function loadSaved() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+
+  function saveField(kind, value) {
+    if (!value) return;
+    try {
+      const saved = loadSaved();
+      saved[kind] = value;
+      localStorage.setItem(STORE_KEY, JSON.stringify(saved));
+    } catch (e) {}
+  }
+
+  // Prefill every empty matching field currently in the DOM (cheap — only
+  // ever a handful of booking-form inputs exist at once).
+  function prefillSavedContactInfo() {
+    const saved = loadSaved();
+    if (!saved || !Object.keys(saved).length) return;
+    document.querySelectorAll('input[id]').forEach(function (input) {
+      const id = input.id;
+      if (!isOwnField(id)) return;
+      const kind = fieldKind(id);
+      if (!kind || !saved[kind]) return;
+      if (input.value) return; // don't clobber something already typed
+      input.value = saved[kind];
+    });
+  }
+  window.prefillSavedContactInfo = prefillSavedContactInfo;
+
+  // Save as the visitor types (blur, not every keystroke) so the details
+  // are captured even if they never finish/submit the form.
+  document.addEventListener('blur', function (e) {
+    const el = e.target;
+    if (!el || el.tagName !== 'INPUT' || !el.id) return;
+    if (!isOwnField(el.id)) return;
+    const kind = fieldKind(el.id);
+    if (kind) saveField(kind, el.value.trim());
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', prefillSavedContactInfo);
 })();

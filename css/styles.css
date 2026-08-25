@@ -46,8 +46,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .nav-links a:hover{color:var(--gold);text-shadow:0 0 12px rgba(46,139,110,0.3)}
 .nav-book{background:transparent;border:1.5px solid var(--gold);color:var(--gold-dk);font-family:'Gudlak Bold',sans-serif;font-size:0.74rem;font-weight:600;letter-spacing:0.18em;padding:0.65rem 1.35rem;cursor:pointer;transition:all 0.3s;text-transform:uppercase;position:relative;overflow:hidden;border-radius:4px}
 @media(min-width:769px){
-  /* Move Book a Session to the far right of the desktop header, past Sign In */
-  .nav-auth{order:2}
+  /* Move the kebab menu to the far right of the desktop header, past Book a Session */
+  .nav-kebab-wrap{order:2}
   .nav-book{order:3}
 }
 .nav-book::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(46,139,110,0.15),transparent);opacity:0;transition:opacity 0.3s}
@@ -62,7 +62,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
   .nav-auth{margin-right:0.4rem!important;gap:0.5rem!important}
   .nav-signin-link{font-size:0.6rem!important;letter-spacing:0.1em!important}
 }
-
 /* ── HAMBURGER MENU (C-01 fix) ── */
 .nav-hamburger{display:none;flex-direction:column;justify-content:center;align-items:center;gap:5px;width:40px;height:40px;background:transparent;border:1px solid var(--border);cursor:pointer;padding:0;transition:border-color 0.3s;flex-shrink:0;border-radius:4px}
 .nav-hamburger:hover{border-color:var(--border-bright)}
@@ -1171,8 +1170,11 @@ tr:hover td{background:rgba(46,139,110,0.03)}
   .nav-drawer-overlay{display:block}
   nav{padding:0.85rem 1.1rem;gap:0.6rem}
   .nav-book{font-size:0.66rem;padding:0.6rem 1rem;letter-spacing:0.12em;margin-left:auto}
-  .nav-signin-link{font-size:0.66rem;letter-spacing:0.12em}
-  .nav-auth{gap:0.5rem}
+  /* The desktop-only kebab menu (Book a Session + Sign In) stays out of the
+     top bar entirely on mobile — the nav-drawer (hamburger menu) already has
+     its own Book a Session button + Sign In entry, so this is never shown
+     below 768px. */
+  .nav-kebab-wrap{display:none!important}
   .form-grid{grid-template-columns:1fr}
   .service-select-grid{grid-template-columns:1fr}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -2114,7 +2116,27 @@ td.wrap, th.wrap { white-space: normal; min-width: 100px; }
 
 
 /* ── GOOGLE AUTH ── */
-.nav-auth{display:flex;align-items:center;gap:0.75rem;margin-right:0.75rem}
+.nav-auth{display:flex;flex-direction:column;align-items:stretch;gap:0.5rem}
+
+/* ── DESKTOP/TABLET/LAPTOP-ONLY KEBAB MENU (Book a Session + Sign In) ──
+   Hidden entirely on mobile (see 768px block) — the hamburger drawer covers
+   the same two options there. Sign In / user pill / logout live inside as
+   .nav-auth, toggled the same way as before by gauthUpdateUI(). */
+.nav-kebab-wrap{position:relative;display:flex;align-items:center}
+.nav-kebab{width:38px;height:38px;border:1px solid var(--border);background:transparent;border-radius:50%;display:flex;align-items:center;justify-content:center;gap:3px;cursor:pointer;transition:all 0.3s;padding:0}
+.nav-kebab span{width:4px;height:4px;border-radius:50%;background:var(--gold-dk);display:block;transition:background 0.3s}
+.nav-kebab:hover{border-color:var(--border-bright);background:rgba(46,139,110,0.06)}
+.nav-kebab:hover span{background:var(--gold)}
+.nav-kebab-menu{position:absolute;top:calc(100% + 0.6rem);right:0;min-width:190px;background:var(--bg);border:1px solid var(--border-bright);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,0.14);padding:0.6rem;opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity 0.2s,transform 0.2s,visibility 0.2s;z-index:150}
+.nav-kebab-wrap.is-open .nav-kebab-menu{opacity:1;visibility:visible;transform:translateY(0)}
+.nav-kebab-wrap.is-open .nav-kebab{border-color:var(--gold-dk)}
+.nav-kebab-item{font-family:'Gudlak Bold',sans-serif;font-size:0.62rem;letter-spacing:0.14em;color:var(--text-muted);text-transform:uppercase;cursor:pointer;padding:0.55rem 0.6rem;border-radius:4px;transition:all 0.2s}
+.nav-kebab-item:hover{color:var(--gold);background:rgba(46,139,110,0.06)}
+.nav-kebab-divider{height:1px;background:var(--border);margin:0.4rem 0.2rem}
+.nav-kebab-menu .nav-signin-link{padding:0.55rem 0.6rem;border-radius:4px;justify-content:flex-start}
+.nav-kebab-menu .nav-signin-link:hover{background:rgba(46,139,110,0.06)}
+.nav-kebab-menu .nav-user-pill{border:none;background:transparent;padding:0.3rem 0.6rem}
+.nav-kebab-menu .nav-logout{width:100%;text-align:left}
 /* ── FLOATING BACK PILL — always reachable, no scrolling needed ── */
 .floating-back-pill{
   position:fixed;
@@ -2218,7 +2240,7 @@ input.field-invalid:focus,select.field-invalid:focus,textarea.field-invalid:focu
   width:100%;
 }
 .step-error-banner.is-visible{display:block}
-.nav-signin-link{font-family:'Gudlak Bold',sans-serif;font-size:0.74rem;font-weight:600;letter-spacing:0.18em;color:var(--gold-dk);text-decoration:none;cursor:pointer;transition:color 0.3s;text-transform:uppercase;display:none!important;align-items:center;gap:0.4rem}
+.nav-signin-link{font-family:'Gudlak Bold',sans-serif;font-size:0.74rem;font-weight:600;letter-spacing:0.18em;color:var(--gold-dk);text-decoration:none;cursor:pointer;transition:color 0.3s;text-transform:uppercase;display:inline-flex;align-items:center;gap:0.4rem}
 .nav-signin-link:hover{color:var(--gold)}
 .nav-signin-link::before{content:'◇';font-size:0.55rem;opacity:0.6}
 
