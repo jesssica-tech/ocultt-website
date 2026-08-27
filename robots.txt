@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin-panel-fragment.html
+
+Sitemap: https://theocultttarot.com/sitemap.xml

@@ -1,0 +1,716 @@
+<!-- ═══ ADMIN DASHBOARD ═══ -->
+<div id="page-admin" class="page">
+<div class="admin-notif-wrap">
+  <button class="admin-mobile-hamburger" id="adminMobileHamburger" onclick="toggleAdminSidebar()" aria-label="Open dashboard menu" aria-expanded="false" aria-controls="adminSidebar">
+    <span></span><span></span><span></span>
+  </button>
+  <button class="admin-notif-bell" onclick="toggleAdminNotifications(event)">
+    <span>🔔</span><span class="admin-notif-label">Notifications</span>
+    <span class="admin-notif-badge" id="admin-notif-badge">0</span>
+  </button>
+  <div class="admin-notif-panel" id="admin-notif-panel">
+    <div class="admin-notif-panel-header"><span>Recent Activity</span><span id="admin-notif-count">0 new</span></div>
+    <div id="admin-notif-list"></div>
+  </div>
+</div>
+<div class="admin-sidebar-overlay" id="adminSidebarOverlay" onclick="closeAdminSidebar()"></div>
+<div class="admin-layout">
+  <div class="admin-sidebar" id="adminSidebar">
+    <div class="admin-sidebar-brand">
+      <div class="nav-logo" style="font-size:0.85rem">Ocultt Admin</div>
+      <p>Akankshaa's Dashboard</p>
+    </div>
+    <div class="admin-nav-item active" onclick="showAdminTab('dashboard',this);closeAdminSidebar()"><span>◇</span><span>Dashboard</span></div>
+
+    <div class="admin-nav-item" onclick="showAdminTab('bookings',this);closeAdminSidebar()"><span>◇</span><span>Bookings</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('customers',this);closeAdminSidebar()"><span>◇</span><span>Customers</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('sessions',this);closeAdminSidebar()"><span>▣</span><span>Session History</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('spells',this);closeAdminSidebar()"><span>✧</span><span>Spell Requests</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('analytics',this);closeAdminSidebar()"><span>◈</span><span>Analytics</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('emailqueue',this);closeAdminSidebar()"><span>✉</span><span>Email Queue</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('coupons',this);closeAdminSidebar()"><span>%</span><span>Coupons</span></div>
+    <div class="admin-nav-item" onclick="showAdminTab('availability',this);closeAdminSidebar()"><span>◷</span><span>Availability</span></div>
+    <div class="admin-sidebar-back">
+      <button class="btn-secondary" onclick="showPage('home')" style="width:100%;font-size:0.65rem;padding:0.6rem">← Back to Site</button>
+    </div>
+  </div>
+
+  <div class="admin-content">
+    <!-- DASHBOARD TAB -->
+    <div id="admin-dashboard" class="admin-tab">
+      <div class="admin-header" style="padding-bottom:0.5rem;border-bottom:1px solid var(--border);margin-bottom:1.25rem">
+        <h1 id="admin-greeting-h1" style="margin-bottom:0.2rem">Good evening, Akankshaa</h1>
+        <p id="admin-greeting-p" style="margin:0;font-size:0.82rem">Here's your practice overview for today — Wednesday, 1 July 2026</p>
+      </div>
+      <div class="stats-grid" id="dashboard-stats">
+        <div class="stat-card"><span class="label">New Bookings Today</span><div class="value" id="dash-today">0</div><div class="delta" id="dash-today-d">No bookings today yet</div></div>
+        <div class="stat-card"><span class="label">Today's Sessions</span><div class="value" id="dash-today-sessions">0</div><div class="delta" id="dash-today-sessions-d">Scheduled for today</div></div>
+        <div class="stat-card"><span class="label">Tomorrow's Sessions</span><div class="value" id="dash-tomorrow-sessions">0</div><div class="delta" id="dash-tomorrow-sessions-d">Scheduled for tomorrow</div></div>
+        <div class="stat-card"><span class="label">Upcoming (7 Days)</span><div class="value" id="dash-upcoming">0</div><div class="delta" id="dash-upcoming-d">Next 7 days</div></div>
+        <div class="stat-card"><span class="label">Pending Confirmations</span><div class="value" id="dash-pending-confirm" style="color:#946C4F">0</div><div class="delta" id="dash-pending-confirm-d">Awaiting confirmation</div></div>
+        <div class="stat-card"><span class="label">Pending Spell Requests</span><div class="value" id="dash-pending-spells" style="color:#946C4F">0</div><div class="delta" id="dash-pending-spells-d">Not yet completed</div></div>
+        <div class="stat-card"><span class="label">Pending Follow-ups</span><div class="value" id="dash-followups" style="color:var(--gold-dk)">0</div><div class="delta" id="dash-followups-d">Due or overdue</div></div>
+        <div class="stat-card"><span class="label">Pending Payments</span><div class="value" id="dash-pending-payments" style="color:#C0392B">0</div><div class="delta" id="dash-pending-payments-d">Unpaid, priced bookings</div></div>
+        <div class="stat-card"><span class="label">Recently Uploaded Files</span><div class="value" id="dash-recent-files">0</div><div class="delta" id="dash-recent-files-d">Last 48 hours</div></div>
+        <div class="stat-card"><span class="label">Total Bookings</span><div class="value" id="dash-total">0</div><div class="delta" id="dash-total-d">Across all services</div></div>
+        <div class="stat-card"><span class="label">Total Clients</span><div class="value" id="dash-clients">0</div><div class="delta" id="dash-clients-d">Unique email addresses</div></div>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header"><h2>Recent Bookings</h2></div>
+        <div id="dash-recent-wrap">
+          <table>
+            <thead><tr><th>Booked At</th><th>Client</th><th>Service</th><th>Package</th><th>Date</th><th>Status</th></tr></thead>
+            <tbody id="dash-recent-tbody"></tbody>
+          </table>
+          <div id="dash-recent-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+            <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Bookings Yet</p>
+            <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">Completed bookings will appear here automatically.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOOKINGS TAB -->
+    <div id="admin-bookings" class="admin-tab" style="display:none">
+      <div class="admin-header"><h1>Bookings</h1><p id="bookings-sub">All sessions and requests</p></div>
+      <div style="margin-bottom:1.1rem" id="bookings-quickviews">
+        <span class="cd-filter-row-label">Quick View</span>
+        <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap;margin-top:0.4rem">
+          <button class="range-tab active" data-quickview="all" onclick="setBookingsQuickView('all',this)">All Bookings</button>
+          <button class="range-tab" data-quickview="upcoming" onclick="setBookingsQuickView('upcoming',this)">Upcoming Appointments</button>
+          <button class="range-tab" data-quickview="today" onclick="setBookingsQuickView('today',this)">Today's Appointments</button>
+          <button class="range-tab" data-quickview="completed" onclick="setBookingsQuickView('completed',this)">Completed Appointments</button>
+          <button class="range-tab" data-quickview="cancelled" onclick="setBookingsQuickView('cancelled',this)">Cancelled Appointments</button>
+          <button class="range-tab" data-quickview="audio" onclick="setBookingsQuickView('audio',this)">Audio Readings</button>
+          <button class="range-tab" data-quickview="phone" onclick="setBookingsQuickView('phone',this)">Phone Readings</button>
+          <button class="range-tab" data-quickview="payments" onclick="setBookingsQuickView('payments',this)">Payments (Unpaid First)</button>
+        </div>
+      </div>
+      <div style="margin-bottom:1.4rem" id="bookings-filter-tabs">
+        <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap;margin-bottom:0.55rem" data-filter-axis="when">
+          <span class="cd-filter-row-label">When</span>
+          <button class="range-tab active" onclick="setBookingsFilter('when','all',this)">All</button>
+          <button class="range-tab" onclick="setBookingsFilter('when','today',this)">Today</button>
+          <button class="range-tab" onclick="setBookingsFilter('when','yesterday',this)">Yesterday</button>
+          <button class="range-tab" onclick="setBookingsFilter('when','this-week',this)">This Week</button>
+          <button class="range-tab" onclick="setBookingsFilter('when','upcoming',this)">Upcoming</button>
+          <button class="range-tab" onclick="setBookingsFilter('when','custom',this);document.getElementById('bookings-custom-date').style.display='inline-block'">Custom Date</button>
+          <input type="date" id="bookings-custom-date" style="display:none;font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.06em;padding:0.3rem 0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer" onchange="setBookingsCustomDate(this.value)">
+        </div>
+        <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap;margin-bottom:0.55rem" data-filter-axis="service">
+          <span class="cd-filter-row-label">Service</span>
+          <button class="range-tab active" onclick="setBookingsFilter('service','all',this)">All</button>
+          <button class="range-tab" onclick="setBookingsFilter('service','Tarot',this)">Tarot</button>
+          <button class="range-tab" onclick="setBookingsFilter('service','Spell',this)">Spell / Magic</button>
+          <button class="range-tab" onclick="setBookingsFilter('service','Numerology',this)">Numerology</button>
+          <button class="range-tab" onclick="setBookingsFilter('service','Energy',this)">Energy Healing</button>
+          <button class="range-tab" onclick="setBookingsFilter('service','Group',this)">Group Sessions</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap" data-filter-axis="status">
+          <span class="cd-filter-row-label">Status</span>
+          <button class="range-tab active" onclick="setBookingsFilter('status','all',this)">All</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Booking Received',this)">Booking Received</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Scheduled',this)">Scheduled</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Waiting',this)">Waiting for Akankshaa</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','In Progress',this)">In Progress</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Completed',this)">Completed</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Cancelled',this)">Cancelled</button>
+          <button class="range-tab" onclick="setBookingsFilter('status','Rescheduled',this)">Rescheduled</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap;margin-top:0.55rem" data-filter-axis="priority">
+          <span class="cd-filter-row-label">Priority</span>
+          <button class="range-tab active" onclick="setBookingsFilter('priority','all',this)">All</button>
+          <button class="range-tab" onclick="setBookingsFilter('priority','Urgent',this)">🔥 Urgent</button>
+          <button class="range-tab" onclick="setBookingsFilter('priority','Normal',this)">Normal</button>
+          <label style="display:flex;align-items:center;gap:0.4rem;margin-left:1rem;font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer">
+            <input type="checkbox" id="bookings-show-archived" onchange="toggleBookingsArchivedView(this.checked)" style="cursor:pointer">
+            Show Archived
+          </label>
+        </div>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>All Bookings</h2>
+          <div class="actions">
+            <input type="text" class="search-input" placeholder="Search bookings..." id="booking-search" oninput="renderAdminBookings()">
+            <button onclick="if(confirm('This will permanently delete ALL bookings and customer records. This cannot be undone. Are you sure?')){OculttDB.clearBookings();renderAdminBookings();renderAdminCustomers();renderDashboard();}" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.4rem 0.8rem;border:1px solid rgba(192,57,43,0.4);background:transparent;cursor:pointer;color:#C0392B">Clear All</button>
+          </div>
+        </div>
+        <div id="admin-bookings-body">
+          <table>
+            <thead><tr><th>Date &amp; Time</th><th>Booking ID</th><th>Client</th><th>Service</th><th>Package</th><th>Duration</th><th>Payment</th><th>Google Meet</th><th>Status</th></tr></thead>
+            <tbody id="bookings-tbody"></tbody>
+          </table>
+          <div id="bookings-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+            <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Bookings Yet</p>
+            <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">Completed bookings will appear here automatically.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CUSTOMERS TAB -->
+    <div id="admin-customers" class="admin-tab" style="display:none">
+      <div class="admin-header"><h1>Client Database</h1><p id="customers-sub">All clients</p></div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>All Clients</h2>
+          <div class="actions">
+            <select id="customer-status-filter" onchange="renderAdminCustomers()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.08em;padding:0.5rem 0.6rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text)">
+              <option value="">All Statuses</option>
+              <option value="Signed Up">Signed Up (no booking yet)</option>
+              <option value="New">New</option>
+              <option value="Active">Active</option>
+              <option value="VIP">VIP</option>
+            </select>
+            <input type="text" class="search-input" placeholder="Search clients..." id="customer-search" oninput="renderAdminCustomers()"></div>
+        </div>
+        <table>
+          <thead><tr><th>Client</th><th>Email</th><th>Phone</th><th>Services</th><th>Sessions</th><th>Last Booking</th><th>Status</th></tr></thead>
+          <tbody id="customers-tbody"></tbody>
+        </table>
+        <div id="customers-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+          <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Clients Yet</p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">Clients are created automatically when a booking is completed.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESSION HISTORY TAB -->
+    <div id="admin-sessions" class="admin-tab" style="display:none">
+      <div class="admin-header"><h1>Session History</h1><p id="sessions-sub">All past sessions and notes</p></div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>Session Archive</h2>
+          <div class="actions" style="flex-wrap:wrap;gap:0.6rem">
+            <input type="text" class="search-input" placeholder="Search by customer name…" id="session-search" oninput="renderSessionHistory()">
+            <select id="session-service-filter" onchange="renderSessionHistory()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.72rem;padding:0.5rem 0.8rem;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;width:auto">
+              <option value="">All Services</option>
+              <option value="Tarot">Tarot Reading</option>
+              <option value="Spell">Spell / Magic</option>
+              <option value="Numerology">Numerology</option>
+              <option value="Energy">Energy Healing</option>
+              <option value="Group">Group Magic</option>
+            </select>
+            <input type="date" id="session-date-filter" onchange="renderSessionHistory()" style="font-family:'Montserrat',sans-serif;font-size:0.85rem;padding:0.5rem 0.8rem;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;width:auto">
+            <button onclick="document.getElementById('session-search').value='';document.getElementById('session-service-filter').value='';document.getElementById('session-date-filter').value='';renderSessionHistory()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.5rem 0.8rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-dim)">Clear Filters</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Date</th><th>Client</th><th>Service</th><th>Package</th><th>Status</th><th>Summary</th></tr></thead>
+          <tbody id="sessions-tbody"></tbody>
+        </table>
+        <div id="sessions-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+          <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Sessions Yet</p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">Bookings will appear here automatically as clients book sessions.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SPELL REQUESTS TAB -->
+    <div id="admin-spells" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Spell Requests</h1>
+        <p id="spells-sub">Loading…</p>
+      </div>
+      <div style="display:flex;gap:1rem;margin-bottom:1.5rem">
+        <div class="stat-card" style="flex:1"><span class="label">Pending Review</span><div class="value" style="color:#946C4F" id="sp-stat-pending">—</div></div>
+        <div class="stat-card" style="flex:1"><span class="label">In Progress</span><div class="value" style="color:#946C4F" id="sp-stat-progress">—</div></div>
+        <div class="stat-card" style="flex:1"><span class="label">Completed</span><div class="value" style="color:#40815F" id="sp-stat-done">—</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap;margin-bottom:1.25rem" id="spells-filter-tabs">
+        <span class="cd-filter-row-label">Status</span>
+        <button class="range-tab active" data-filter="all" onclick="setSpellsFilter('all',this)">All Active</button>
+        <button class="range-tab" data-filter="Pending" onclick="setSpellsFilter('Pending',this)">Pending Review</button>
+        <button class="range-tab" data-filter="In Progress" onclick="setSpellsFilter('In Progress',this)">In Progress</button>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>Active Spell Requests</h2>
+          <div class="actions">
+            <input type="text" class="search-input" placeholder="Search by name, email, category…" id="spell-search" oninput="renderAdminSpells()">
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Submitted</th><th>Client</th><th>Selected Spell</th><th>Stage</th><th>Urgency</th><th>Status</th><th>Payment</th><th>Video</th><th>Actions</th></tr></thead>
+          <tbody id="spells-tbody"></tbody>
+        </table>
+        <div id="spells-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+          <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Active Spell Requests</p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">New spell requests will appear here automatically.</p>
+        </div>
+      </div>
+
+      <!-- Completed / History section — collapsed by default -->
+      <div class="admin-table-wrap" style="margin-top:1.5rem">
+        <div class="admin-table-header" style="cursor:pointer" onclick="toggleSpellHistory()">
+          <h2>Completed Requests <span id="spell-history-count" style="color:var(--text-dim);font-weight:400;font-size:0.85rem"></span></h2>
+          <div class="actions">
+            <span id="spell-history-chevron" style="font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;color:var(--text-dim);letter-spacing:0.1em">SHOW ▾</span>
+          </div>
+        </div>
+        <div id="spell-history-wrap" style="display:none">
+          <table>
+            <thead><tr><th>Submitted</th><th>Client</th><th>Selected Spell</th><th>Stage</th><th>Urgency</th><th>Status</th><th>Payment</th><th>Video</th><th>Actions</th></tr></thead>
+            <tbody id="spells-history-tbody"></tbody>
+          </table>
+          <div id="spells-history-empty" style="display:none;padding:2rem 1.5rem;text-align:center">
+            <p style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-dim);font-style:italic">No completed requests yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video modal for upload/record/preview -->
+      <div id="spell-video-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(26,51,41,0.85);backdrop-filter:blur(8px);align-items:center;justify-content:center">
+        <div style="background:var(--bg);border:1px solid var(--border-bright);max-width:640px;width:94%;padding:0;position:relative;max-height:90vh;overflow-y:auto">
+          <div style="background:#1A7055;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+            <span style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;letter-spacing:0.3em">RITUAL VIDEO — <span id="vm-spell-id" style="opacity:0.8"></span></span>
+            <button onclick="closeVideoModal()" style="color:#fff;background:none;border:none;font-size:1.2rem;cursor:pointer;opacity:0.7">✕</button>
+          </div>
+          <div style="padding:24px">
+            <p style="font-family:'Montserrat',sans-serif;font-size:1rem;color:var(--text-muted);margin-bottom:20px;font-style:italic" id="vm-client-name"></p>
+            <!-- Tabs -->
+            <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
+              <button id="vm-tab-upload" onclick="switchVideoTab('upload')" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.2em;padding:8px 16px;border:none;border-bottom:2px solid #1A7055;background:none;cursor:pointer;color:#1A7055">UPLOAD</button>
+              <button id="vm-tab-record" onclick="switchVideoTab('record')" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.2em;padding:8px 16px;border:none;border-bottom:2px solid transparent;background:none;cursor:pointer;color:var(--text-dim)">RECORD</button>
+            </div>
+
+            <!-- Upload Tab -->
+            <div id="vm-upload-panel">
+              <div style="border:2px dashed var(--border);padding:32px;text-align:center;margin-bottom:16px;cursor:pointer" onclick="document.getElementById('vm-file-input').click()">
+                <div style="font-size:2rem;margin-bottom:8px;opacity:0.4">🎥</div>
+                <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;color:var(--text-dim)">Click to select video file</div>
+                <div style="font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-dim);margin-top:4px">MP4, MOV, WebM · max 500 MB</div>
+              </div>
+              <input type="file" id="vm-file-input" accept="video/*" style="display:none" onchange="onVideoFileSelected(this)">
+              <div id="vm-file-name" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-muted);margin-bottom:12px;font-style:italic"></div>
+              <button id="vm-upload-btn" onclick="uploadRitualVideo()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:#1A7055;color:#fff;border:none;cursor:pointer;opacity:0.4;pointer-events:none" disabled>UPLOAD VIDEO</button>
+            </div>
+
+            <!-- Record Tab -->
+            <div id="vm-record-panel" style="display:none">
+              <video id="vm-preview" style="width:100%;background:#000;margin-bottom:12px;max-height:300px" muted playsinline autoplay></video>
+              <div style="display:flex;gap:8px;margin-bottom:12px">
+                <button id="vm-start-btn" onclick="startRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px 20px;background:#1A7055;color:#fff;border:none;cursor:pointer">● START RECORDING</button>
+                <button id="vm-stop-btn" onclick="stopRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px 20px;background:#c0392b;color:#fff;border:none;cursor:pointer;display:none">■ STOP</button>
+              </div>
+              <div id="vm-record-status" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-muted);font-style:italic;margin-bottom:12px"></div>
+              <button id="vm-save-recording-btn" onclick="saveRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:#1A7055;color:#fff;border:none;cursor:pointer;display:none">SAVE & UPLOAD RECORDING</button>
+            </div>
+
+            <!-- Progress -->
+            <div id="vm-progress" style="display:none;margin-top:16px">
+              <div style="height:4px;background:var(--border);position:relative;overflow:hidden">
+                <div id="vm-progress-bar" style="height:100%;background:#1A7055;width:0%;transition:width 0.3s"></div>
+              </div>
+              <div id="vm-progress-text" style="font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-muted);margin-top:6px;font-style:italic">Uploading…</div>
+            </div>
+
+            <!-- Status -->
+            <div id="vm-status" style="display:none;margin-top:16px;padding:12px 16px;font-family:'Montserrat',sans-serif;font-size:0.95rem;font-style:italic"></div>
+
+            <!-- Send to customer (with cancel-before-send countdown) -->
+            <div id="vm-send-section" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:20px">
+              <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;color:var(--gold);margin-bottom:8px">VIDEO UPLOADED SUCCESSFULLY</div>
+              <p id="vm-send-countdown-label" style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-muted);margin-bottom:12px;font-style:italic"></p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button id="vm-send-btn" onclick="sendVideoToCustomer()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:var(--gold);color:#fff;border:none;cursor:pointer">✉ SEND NOW</button>
+                <button onclick="cancelPendingSend()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:transparent;color:#c0392b;border:1px solid #c0392b;cursor:pointer">✕ CANCEL &amp; RE-RECORD</button>
+              </div>
+              <div id="vm-send-status" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;margin-top:10px;font-style:italic;color:var(--text-muted)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GENERIC MEDIA MODAL — Energy Healing, Numerology, Audio Tarot Reading -->
+    <div id="media-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(26,51,41,0.85);backdrop-filter:blur(8px);align-items:center;justify-content:center">
+      <div style="background:var(--bg);border:1px solid var(--border-bright);max-width:640px;width:94%;padding:0;position:relative;max-height:90vh;overflow-y:auto">
+        <div style="background:#1A7055;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;letter-spacing:0.3em">RECORDING — <span id="mm-booking-id" style="opacity:0.8"></span></span>
+          <button onclick="closeMediaModal()" style="color:#fff;background:none;border:none;font-size:1.2rem;cursor:pointer;opacity:0.7">✕</button>
+        </div>
+        <div style="padding:24px">
+          <p style="font-family:'Montserrat',sans-serif;font-size:1rem;color:var(--text-muted);margin-bottom:16px;font-style:italic" id="mm-client-name"></p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-dim);margin-bottom:20px;line-height:1.5">Record or upload the video/audio below, then click <strong>Send Now</strong> to email it securely to your client. The link works for 7 days.</p>
+
+          <!-- Video/Audio type toggle -->
+          <div style="display:flex;gap:8px;margin-bottom:20px">
+            <button id="mm-type-video" onclick="mmSetMediaType('video')" style="flex:1;font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px;border:1px solid var(--border);cursor:pointer;background:var(--gold-dk);color:#fff">🎥 VIDEO</button>
+            <button id="mm-type-audio" onclick="mmSetMediaType('audio')" style="flex:1;font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text)">🎙 AUDIO ONLY</button>
+          </div>
+
+          <!-- Tabs -->
+          <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
+            <button id="mm-tab-upload" onclick="mmSwitchTab('upload')" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.2em;padding:8px 16px;border:none;border-bottom:2px solid #1A7055;background:none;cursor:pointer;color:#1A7055">UPLOAD</button>
+            <button id="mm-tab-record" onclick="mmSwitchTab('record')" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.2em;padding:8px 16px;border:none;border-bottom:2px solid transparent;background:none;cursor:pointer;color:var(--text-dim)">RECORD</button>
+          </div>
+
+          <!-- Upload Tab -->
+          <div id="mm-upload-panel">
+            <div style="border:2px dashed var(--border);padding:32px;text-align:center;margin-bottom:16px;cursor:pointer" onclick="document.getElementById('mm-file-input').click()">
+              <div style="font-size:2rem;margin-bottom:8px;opacity:0.4">📁</div>
+              <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;color:var(--text-dim)">Click to select a file</div>
+              <div style="font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-dim);margin-top:4px">Matches the type selected above · max 500 MB</div>
+            </div>
+            <input type="file" id="mm-file-input" accept="video/*" style="display:none" onchange="mmOnFileSelected(this)">
+            <div id="mm-file-name" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-muted);margin-bottom:12px;font-style:italic"></div>
+            <button id="mm-upload-btn" onclick="mmUploadSelectedFile()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:#1A7055;color:#fff;border:none;cursor:pointer;opacity:0.4;pointer-events:none" disabled>UPLOAD FILE</button>
+          </div>
+
+          <!-- Record Tab -->
+          <div id="mm-record-panel" style="display:none">
+            <video id="mm-preview" style="width:100%;background:#000;margin-bottom:12px;max-height:300px" muted playsinline autoplay></video>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <button id="mm-start-btn" onclick="mmStartRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px 20px;background:#1A7055;color:#fff;border:none;cursor:pointer">● START RECORDING</button>
+              <button id="mm-stop-btn" onclick="mmStopRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.15em;padding:10px 20px;background:#c0392b;color:#fff;border:none;cursor:pointer;display:none">■ STOP</button>
+            </div>
+            <div id="mm-record-status" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-muted);font-style:italic;margin-bottom:12px"></div>
+            <button id="mm-save-recording-btn" onclick="mmSaveRecording()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:#1A7055;color:#fff;border:none;cursor:pointer;display:none">SAVE & UPLOAD RECORDING</button>
+          </div>
+
+          <!-- Status -->
+          <div id="mm-status" style="display:none;margin-top:16px;padding:12px 16px;font-family:'Montserrat',sans-serif;font-size:0.95rem;font-style:italic"></div>
+
+          <!-- Send to customer -->
+          <div id="mm-send-section" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:20px">
+            <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;color:var(--gold);margin-bottom:8px">UPLOADED SUCCESSFULLY</div>
+            <button id="mm-send-btn" onclick="mmSendToCustomer()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.2em;padding:12px 24px;background:var(--gold);color:#fff;border:none;cursor:pointer">✉ SEND NOW</button>
+            <div id="mm-send-status" style="font-family:'Montserrat',sans-serif;font-size:0.9rem;margin-top:10px;font-style:italic;color:var(--text-muted)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CUSTOMER PROFILE — slide-over panel -->
+    <div id="customer-profile-overlay" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(26,51,41,0.55);backdrop-filter:blur(4px)" onclick="closeCustomerDetail()"></div>
+    <div id="customer-profile-panel" class="customer-profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;z-index:9999;width:680px;background:var(--bg);border-left:1px solid var(--border-bright);overflow-y:auto;box-shadow:-8px 0 40px rgba(0,0,0,0.18)">
+      <div style="background:#1A7055;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2">
+        <div>
+          <span style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:0.68rem;letter-spacing:0.28em;text-transform:uppercase">Customer Profile</span>
+          <div id="cd-client-name" style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:1.3rem;margin-top:0.2rem"></div>
+        </div>
+        <button onclick="closeCustomerDetail()" style="color:#fff;background:none;border:none;font-size:1.3rem;cursor:pointer;opacity:0.8">✕</button>
+      </div>
+
+      <div style="padding:24px">
+
+        <!-- Quick Actions -->
+        <div id="cd-quick-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.75rem"></div>
+
+        <!-- Personal Information -->
+        <p class="cd-section-label">Personal Information</p>
+        <div id="cd-client-summary" style="margin-bottom:1.75rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)"></div>
+
+        <!-- Statistics -->
+        <p class="cd-section-label">Statistics</p>
+        <div id="cd-stats" class="stats-grid" style="margin-bottom:1.75rem"></div>
+
+        <!-- Booking Timeline -->
+        <p class="cd-section-label">Booking Timeline</p>
+        <div id="cd-timeline" style="margin-bottom:1.75rem"></div>
+        <div id="cd-history-empty" style="display:none;padding:2rem 1rem;text-align:center;margin-bottom:1.75rem">
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.9rem;color:var(--text-dim);font-style:italic">No bookings found for this client.</p>
+        </div>
+
+        <!-- Session History -->
+        <p class="cd-section-label">Session History</p>
+        <div id="cd-session-history" style="margin-bottom:1.75rem"></div>
+
+        <!-- Payments -->
+        <p class="cd-section-label">Payments</p>
+        <div id="cd-payments" style="margin-bottom:1.75rem"></div>
+
+        <!-- Follow-up -->
+        <p class="cd-section-label">Follow-up</p>
+        <div id="cd-followup" style="margin-bottom:1.75rem"></div>
+
+        <!-- Internal Remarks -->
+        <p class="cd-section-label">Internal Remarks</p>
+        <div id="cd-internal-notes" style="margin-bottom:1.75rem"></div>
+
+        <!-- Attachments -->
+        <p class="cd-section-label">Files &amp; Attachments</p>
+        <div id="cd-attachments" style="margin-bottom:0.5rem"></div>
+
+      </div>
+    </div>
+
+    <!-- BOOKING DETAILS — slide-over panel -->
+    <!-- FILE PREVIEW LIGHTBOX (shared) -->
+    <div id="fa-lightbox" class="fa-lightbox-overlay" onclick="if(event.target===this)closeFaLightbox()">
+      <button class="fa-lightbox-close" onclick="closeFaLightbox()">✕</button>
+      <div class="fa-lightbox-content" id="fa-lightbox-content"></div>
+    </div>
+
+    <div id="booking-detail-overlay" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(26,51,41,0.55);backdrop-filter:blur(4px)" onclick="closeBookingDetail()"></div>
+    <div id="booking-detail-panel" class="customer-profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;z-index:9999;width:640px;background:var(--bg);border-left:1px solid var(--border-bright);overflow-y:auto;box-shadow:-8px 0 40px rgba(0,0,0,0.18)">
+      <div style="background:#1A7055;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2">
+        <div>
+          <span style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:0.68rem;letter-spacing:0.28em;text-transform:uppercase">Booking Details</span>
+          <div id="bd-booking-id" style="color:#fff;font-family:'Gudlak Bold',sans-serif;font-size:1.2rem;margin-top:0.2rem"></div>
+        </div>
+        <button onclick="closeBookingDetail()" style="color:#fff;background:none;border:none;font-size:1.3rem;cursor:pointer;opacity:0.8">✕</button>
+      </div>
+
+      <div style="padding:24px">
+
+        <!-- Quick Actions -->
+        <div id="bd-quick-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.75rem"></div>
+
+        <!-- Lifecycle progress indicator -->
+        <p class="cd-section-label">Booking Status</p>
+        <div id="bd-progress" style="margin-bottom:1.75rem"></div>
+        <div id="bd-next-action" style="margin-bottom:1.75rem"></div>
+
+        <!-- Timeline (spell requests only) -->
+        <div id="bd-timeline-wrap" style="display:none;margin-bottom:1.75rem">
+          <p class="cd-section-label">Timeline</p>
+          <div id="bd-timeline-events"></div>
+        </div>
+
+        <!-- Booking Information -->
+        <p class="cd-section-label">Booking Information</p>
+        <div id="bd-info" style="margin-bottom:1.75rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)"></div>
+
+        <!-- Customer Contact -->
+        <p class="cd-section-label">Customer Contact Details</p>
+        <div id="bd-contact" style="margin-bottom:1.75rem"></div>
+
+        <!-- Customer Notes -->
+        <p class="cd-section-label">Customer Notes</p>
+        <div id="bd-customer-notes" style="margin-bottom:1.75rem"></div>
+
+        <!-- Booking Notes -->
+        <p class="cd-section-label">Booking Notes</p>
+        <div id="bd-booking-notes" style="margin-bottom:1.75rem"></div>
+
+        <!-- Session Summary -->
+        <p class="cd-section-label">Session Summary</p>
+        <div id="bd-session-summary" style="margin-bottom:0.5rem"></div>
+
+        <!-- Files & Attachments (spell requests only) -->
+        <div id="bd-attachments-wrap" style="display:none;margin-top:1.75rem">
+          <p class="cd-section-label">Files &amp; Attachments</p>
+          <div id="bd-attachments"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ANALYTICS TAB -->
+    <div id="admin-analytics" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Analytics</h1>
+        <p id="analytics-sub">Bookings and revenue across your practice</p>
+      </div>
+
+      <!-- Time range filter -->
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem" id="analytics-range-tabs">
+        <button class="range-tab" data-range="30" onclick="setAnalyticsRange('30',this)">Last 30 Days</button>
+        <button class="range-tab" data-range="60" onclick="setAnalyticsRange('60',this)">Last 60 Days</button>
+        <button class="range-tab" data-range="month" onclick="setAnalyticsRange('month',this)">This Month</button>
+        <button class="range-tab" data-range="6m" onclick="setAnalyticsRange('6m',this)">Last 6 Months</button>
+        <button class="range-tab" data-range="year" onclick="setAnalyticsRange('year',this)">This Year</button>
+        <button class="range-tab active" data-range="all" onclick="setAnalyticsRange('all',this)">Lifetime</button>
+      </div>
+
+      <div class="stats-grid" id="analytics-stats" style="margin-bottom:1.5rem">
+        <div class="stat-card"><span class="label">Bookings</span><div class="value" id="an-stat-bookings">0</div><div class="delta" id="an-stat-bookings-d">In selected range</div></div>
+        <div class="stat-card"><span class="label">Revenue</span><div class="value" id="an-stat-revenue" style="color:var(--gold)">₹0</div><div class="delta" id="an-stat-revenue-d">Priced bookings only</div></div>
+        <div class="stat-card"><span class="label">New Clients</span><div class="value" id="an-stat-clients">0</div><div class="delta" id="an-stat-clients-d">First-time emails</div></div>
+        <div class="stat-card"><span class="label">Avg. Booking Value</span><div class="value" id="an-stat-avg" style="color:var(--gold)">₹0</div><div class="delta" id="an-stat-avg-d">Where price is known</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:1.5rem;margin-bottom:1.5rem" id="analytics-charts-grid">
+        <div class="admin-table-wrap" style="padding:1.5rem">
+          <div class="admin-table-header" style="border:none;padding:0 0 1rem"><h2>Bookings Over Time</h2></div>
+          <div id="an-bar-chart"></div>
+        </div>
+        <div class="admin-table-wrap" style="padding:1.5rem">
+          <div class="admin-table-header" style="border:none;padding:0 0 1rem"><h2>By Service</h2></div>
+          <div id="an-donut-chart"></div>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <div class="admin-table-header"><h2>Revenue Note</h2></div>
+        <p style="padding:1.2rem 1.5rem;font-family:'Montserrat',sans-serif;font-size:0.92rem;color:var(--text-muted);font-style:italic;line-height:1.8">Revenue is calculated from any booking with a recorded price — Tarot Readings, Spell/Magic, Numerology, and Energy Healing all report their price now. Group Magic bookings don't store a price yet, since the booking form itself doesn't capture one — that will start counting automatically once pricing is added there.</p>
+      </div>
+    </div>
+
+    <!-- EMAIL QUEUE TAB -->
+    <div id="admin-emailqueue" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Email Queue</h1>
+        <p id="emailqueue-sub">Confirmation emails staged for delivery</p>
+      </div>
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat-card"><span class="label">Queued</span><div class="value" id="eq-stat-queued">0</div><div class="delta" id="eq-stat-queued-d">Awaiting send</div></div>
+        <div class="stat-card"><span class="label">Sent</span><div class="value" id="eq-stat-sent" style="color:#40815F">0</div><div class="delta">Marked as sent</div></div>
+        <div class="stat-card"><span class="label">Total</span><div class="value" id="eq-stat-total">0</div><div class="delta">All time</div></div>
+      </div>
+      <div style="border:1px solid var(--border);background:linear-gradient(155deg,rgba(255,255,255,0.95),rgba(237,245,241,0.7));padding:1.2rem 1.6rem;margin-bottom:1.5rem;display:flex;align-items:flex-start;gap:1rem">
+        <span style="font-size:1.1rem;flex-shrink:0;opacity:0.55">◈</span>
+        <div>
+          <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.68rem;letter-spacing:0.2em;color:var(--gold);text-transform:uppercase;margin-bottom:0.3rem">No Email Provider Connected</div>
+          <div style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-muted);line-height:1.75;font-style:italic">Emails are staged locally. Connect <strong style="font-style:normal;color:var(--text)">Resend</strong>, <strong style="font-style:normal;color:var(--text)">SendGrid</strong>, or <strong style="font-style:normal;color:var(--text)">Nodemailer</strong> to enable real delivery. Use "Mark Sent" to track manually handled emails.</div>
+        </div>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>All Queued Emails</h2>
+          <div class="actions">
+            <input type="text" class="search-input" placeholder="Search by name or email..." id="eq-search" oninput="renderEmailQueue()">
+            <button onclick="EmailQueue.clearSent();renderEmailQueue();" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.4rem 0.8rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-dim)">Clear Sent</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Queued At</th><th>Booking ID</th><th>Recipient</th><th>Email</th><th>Service</th><th>Date &amp; Time</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="eq-tbody"></tbody>
+        </table>
+        <div id="eq-empty" style="display:none;padding:3rem;text-align:center;color:var(--text-dim);font-family:'Montserrat',sans-serif;font-style:italic">No emails queued yet. Confirmation emails will appear here automatically after each booking.</div>
+      </div>
+      <div id="eq-preview-wrap" style="display:none;margin-top:1.5rem">
+        <div class="admin-table-wrap" style="margin-bottom:0">
+          <div class="admin-table-header">
+            <h2>Email Preview</h2>
+            <button onclick="document.getElementById('eq-preview-wrap').style.display='none'" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.4rem 0.8rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-dim)">Close</button>
+          </div>
+          <div id="eq-preview-body" style="padding:1.5rem 2rem;font-family:'Montserrat',sans-serif;font-size:1rem;line-height:1.9;color:var(--text-muted);border:1px solid var(--border);margin:1rem 1.5rem 1.5rem;background:rgba(255,255,255,0.9);white-space:pre-wrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COUPONS TAB -->
+    <div id="admin-coupons" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Coupons</h1>
+        <p>Create discount codes for clients. Each code can be used once per customer, either a % off or a fixed rupee amount, and only applies above the minimum order you set.</p>
+      </div>
+      <div class="admin-table-wrap" style="margin-bottom:1.5rem">
+        <div class="admin-table-header"><h2>Create a New Coupon</h2></div>
+        <div style="padding:1.5rem 2rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;align-items:end">
+          <div class="form-group"><label>Code</label><input type="text" id="cp-new-code" placeholder="e.g. WELCOME10" style="text-transform:uppercase"></div>
+          <div class="form-group"><label>Type</label><select id="cp-new-type"><option value="percent">% Off</option><option value="fixed">₹ Off (Fixed)</option></select></div>
+          <div class="form-group"><label>Value</label><input type="number" id="cp-new-value" placeholder="e.g. 10"></div>
+          <div class="form-group"><label>Min. Order (₹)</label><input type="number" id="cp-new-min" placeholder="1000" value="1000"></div>
+          <button class="cd-action-btn" style="background:var(--gold-dk);color:#fff;height:fit-content" onclick="createCoupon()">+ Create Coupon</button>
+        </div>
+        <p id="cp-create-status" style="padding:0 2rem 1.2rem;font-family:'Montserrat',sans-serif;font-size:0.88rem;font-style:italic"></p>
+      </div>
+      <div class="admin-table-wrap">
+        <div class="admin-table-header">
+          <h2>All Coupons</h2>
+          <button onclick="renderCoupons()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;padding:0.4rem 0.8rem;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-dim)">Refresh</button>
+        </div>
+        <table>
+          <thead><tr><th>Code</th><th>Discount</th><th>Min. Order</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="cp-tbody"></tbody>
+        </table>
+        <div id="cp-empty" style="display:none;padding:3rem;text-align:center;color:var(--text-dim);font-family:'Montserrat',sans-serif;font-style:italic">No coupons yet. Create one above to offer clients a discount.</div>
+      </div>
+    </div>
+
+    <!-- AVAILABILITY TAB -->
+    <div id="admin-availability" class="admin-tab" style="display:none">
+      <div class="admin-header">
+        <h1>Availability</h1>
+        <p>Mark dates or times when you're unavailable — clients won't be able to book these on the calendar.</p>
+      </div>
+
+      <div class="admin-table-wrap" style="margin-bottom:1.5rem">
+        <div class="admin-table-header"><h2>Group Magic — New Moon &amp; Full Moon Dates</h2></div>
+        <div style="padding:1.5rem 2rem">
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-muted);margin-bottom:1.2rem">
+            The Group Magic page shows the next New Moon and Full Moon dates automatically — calculated in real time, so they never go stale. Only set an override here if you're unavailable on the calculated date for a specific session. Leave a field blank to go back to the automatic date.
+          </p>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>New Moon Circle — Override Date</label>
+              <input type="date" id="moon-new-date">
+            </div>
+            <div class="form-group">
+              <label>New Moon Circle — Time</label>
+              <input type="text" id="moon-new-time" placeholder="8:00 PM IST">
+            </div>
+            <div class="form-group full" style="display:flex;gap:0.6rem">
+              <button class="btn-secondary" onclick="saveMoonOverride('new_moon')" style="padding:0.6rem 1.2rem;font-size:0.75rem">Save New Moon Override</button>
+              <button class="btn-secondary" onclick="clearMoonOverride('new_moon')" style="padding:0.6rem 1.2rem;font-size:0.75rem">Clear (Use Auto Date)</button>
+            </div>
+          </div>
+          <div class="form-grid" style="margin-top:1.5rem">
+            <div class="form-group">
+              <label>Full Moon Release — Override Date</label>
+              <input type="date" id="moon-full-date">
+            </div>
+            <div class="form-group">
+              <label>Full Moon Release — Time</label>
+              <input type="text" id="moon-full-time" placeholder="9:00 PM IST">
+            </div>
+            <div class="form-group full" style="display:flex;gap:0.6rem">
+              <button class="btn-secondary" onclick="saveMoonOverride('full_moon')" style="padding:0.6rem 1.2rem;font-size:0.75rem">Save Full Moon Override</button>
+              <button class="btn-secondary" onclick="clearMoonOverride('full_moon')" style="padding:0.6rem 1.2rem;font-size:0.75rem">Clear (Use Auto Date)</button>
+            </div>
+          </div>
+          <p id="moon-override-status" style="display:none;margin-top:1rem;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-style:italic"></p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.8rem;color:var(--text-dim);margin-top:1.2rem;font-style:italic">
+            Note: "Abundance Ritual" isn't tied to a moon phase, so it isn't covered here — its date still needs to be set directly on the website.
+          </p>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap" style="margin-bottom:1.5rem">
+        <div class="admin-table-header"><h2>Block Time Off</h2></div>
+        <div style="padding:1.5rem 2rem">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Block Type</label>
+              <select id="avail-type" onchange="onAvailTypeChange()">
+                <option value="full-day">Single day (fully unavailable)</option>
+                <option value="date-range">Date range (fully unavailable)</option>
+                <option value="time-slots">Specific times only (on one day)</option>
+              </select>
+            </div>
+            <div class="form-group"></div>
+            <div class="form-group">
+              <label>Start Date *</label>
+              <input type="date" id="avail-start">
+            </div>
+            <div class="form-group" id="avail-end-wrap" style="display:none">
+              <label>End Date *</label>
+              <input type="date" id="avail-end">
+            </div>
+            <div class="form-group full" id="avail-times-wrap" style="display:none">
+              <label>Times to Block</label>
+              <div id="avail-times-checks" style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.4rem">
+                <!-- populated by JS -->
+              </div>
+            </div>
+            <div class="form-group full">
+              <label>Note (optional, shown only to you)</label>
+              <input type="text" id="avail-note" placeholder="e.g. Travelling, family event, fully booked elsewhere">
+            </div>
+          </div>
+          <button class="btn-primary" style="margin-top:1rem" onclick="addAvailabilityBlockFromForm()">+ Add Block</button>
+          <div class="step-error-banner" id="avail-form-error"></div>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <div class="admin-table-header"><h2>Current Blocks</h2></div>
+        <table>
+          <thead><tr><th>Type</th><th>Dates</th><th>Times</th><th>Note</th><th>Actions</th></tr></thead>
+          <tbody id="avail-tbody"></tbody>
+        </table>
+        <div id="avail-empty" style="display:none;padding:2.5rem 1.5rem;text-align:center">
+          <p style="font-family:'Gudlak Bold',sans-serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.5rem">No Blocks Set</p>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-dim);font-style:italic">Akankshaa is shown as available on all upcoming weekdays.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end admin-content -->
+</div><!-- end admin-layout -->
+</div>

@@ -21,6 +21,184 @@ let _bookingSaved=false; // guard against double-fire on step 5
 let _paymentVerified=false; // set true after successful Razorpay payment
 let _rzpPaymentId=''; // Razorpay payment_id stored for the booking record
 
+// ═══════════════════════════════════════════════════════════════════
+// International (non-India) currency detection + PayPal checkout.
+// Confirmed Aug 2026 (Jess ↔ Disha): auto-detect visitor location —
+// India stays on the existing Razorpay/₹ flow completely unchanged;
+// everyone else sees USD pricing at the real INR→USD rate × a 3x
+// international markup, and pays via PayPal. The FAIL-SAFE DEFAULT ON
+// ANY DETECTION FAILURE IS INDIA/INR — never guess USD, since that's
+// the direction that would actually change what a customer is charged.
+// The real, authoritative charge is always computed server-side (see
+// server/routes/paypal.js computeAmountRupees + toUsd) from the same
+// price tables Razorpay uses — this client-side code only decides
+// which *display* and which *gateway* to show; it never invents a
+// price itself.
+// ═══════════════════════════════════════════════════════════════════
+window.OT_CURRENCY = 'INR'; // safe default until (if) detection resolves
+window.OT_COUNTRY  = null;
+const OT_USD_RATE   = 88; // ₹ per $1 — mirror of PAYPAL_USD_RATE's default;
+                          // if Akanksha changes PAYPAL_USD_RATE in Render,
+                          // update this too so displayed ≈ charged price.
+const OT_INTL_MARKUP = 3; // mirror of PAYPAL_INTL_MARKUP's default.
+
+window.OT_CURRENCY_READY = new Promise(function(resolve){
+  try {
+    const cached = sessionStorage.getItem('ot_currency');
+    if (cached === 'INR' || cached === 'USD') {
+      window.OT_CURRENCY = cached;
+      resolve(cached);
+      return;
+    }
+  } catch(e) { /* sessionStorage unavailable — fall through to detect */ }
+
+  const timeout = setTimeout(function(){ resolve(finish('INR')); }, 4000);
+  function finish(currency){
+    clearTimeout(timeout);
+    window.OT_CURRENCY = currency;
+    try { sessionStorage.setItem('ot_currency', currency); } catch(e){}
+    return currency;
+  }
+  fetch('https://get.geojs.io/v1/ip/country.json', { signal: AbortSignal.timeout(3500) })
+    .then(r => r.json())
+    .then(data => {
+      window.OT_COUNTRY = data && data.country_code || null;
+      resolve(finish(window.OT_COUNTRY === 'IN' ? 'INR' : 'USD'));
+    })
+    .catch(() => resolve(finish('INR'))); // any failure → India/INR, never guess
+});
+
+function otToUsd(rupees){
+  return Math.round((rupees / OT_USD_RATE) * OT_INTL_MARKUP * 100) / 100;
+}
+// Central display formatter — every customer-facing price should render
+// through this so India and international visitors always see a price
+// consistent with what they'll actually be charged.
+function formatPrice(rupees){
+  rupees = Number(rupees) || 0;
+  if (window.OT_CURRENCY === 'USD') return '$' + otToUsd(rupees).toFixed(2);
+  return '₹' + rupees.toLocaleString('en-IN');
+}
+
+// ── Once currency resolves, refresh every price the customer can see
+// before they've started a booking (dropdowns, service cards, currency
+// badges). Anything set later (payment-step totals, success screens)
+// already calls formatPrice() directly at render time — see each
+// render*PaymentView()/finalize*Booking() function. ──
+window.OT_CURRENCY_READY.then(function(currency){
+  if (currency !== 'USD') return; // India stays exactly as authored — nothing to do
+
+  document.querySelectorAll('[data-price-rupees]').forEach(function(el){
+    const rupees = Number(el.getAttribute('data-price-rupees'));
+    if (!isNaN(rupees)) el.textContent = formatPrice(rupees);
+  });
+  document.querySelectorAll('.currency-badge').forEach(function(el){
+    el.textContent = '$ USD';
+  });
+  document.querySelectorAll('select option[value*="|"]').forEach(function(opt){
+    const parts = opt.value.split('|');
+    const rupees = Number(parts[1]);
+    if (parts.length === 2 && !isNaN(rupees)) {
+      const label = opt.textContent.replace(/—\s*₹[\d,]+\s*$/, '').trim();
+      opt.textContent = label + ' — ' + formatPrice(rupees);
+    }
+  });
+  const gPrice = document.getElementById('g-price');
+  if (gPrice) {
+    Array.from(gPrice.options).forEach(function(opt){
+      const rupees = Number(opt.value);
+      if (!isNaN(rupees)) opt.textContent = formatPrice(rupees);
+    });
+  }
+});
+
+// ── Shared PayPal checkout core — used by all 5 booking flows for
+// visitors detected as international. Mirrors the Razorpay flow's trust
+// model exactly: the server independently re-prices every order from
+// its own tables (never trusts a client-supplied amount), and only
+// PayPal's own server-to-server "COMPLETED" capture response — never
+// anything the browser reports back — marks a booking Paid. ──
+let _paypalSdkPromise = null;
+function loadPayPalSdk(clientId){
+  if (_paypalSdkPromise) return _paypalSdkPromise;
+  _paypalSdkPromise = new Promise(function(resolve, reject){
+    if (window.paypal) { resolve(window.paypal); return; }
+    const s = document.createElement('script');
+    s.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(clientId) + '&currency=USD&intent=capture';
+    s.onload = function(){ window.paypal ? resolve(window.paypal) : reject(new Error('PayPal SDK failed to load.')); };
+    s.onerror = function(){ reject(new Error('PayPal SDK failed to load.')); };
+    document.head.appendChild(s);
+  });
+  return _paypalSdkPromise;
+}
+
+// config: { bookingId, type, duration, basePrice, urgency, name, email,
+//   phone, couponCode, payBtnId, containerId, statusSetter(msg,color),
+//   onApproved() }
+function initiatePayPalCheckout(config){
+  const payBtn = document.getElementById(config.payBtnId);
+  const container = document.getElementById(config.containerId);
+  if (payBtn) payBtn.style.display = 'none';
+  if (container) { container.style.display = 'block'; container.innerHTML = ''; }
+  config.statusSetter('Loading secure payment…', 'var(--text-muted)');
+
+  fetch(OCULTT_API + '/paypal/create-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingId: config.bookingId, type: config.type, duration: config.duration,
+      basePrice: config.basePrice, urgency: config.urgency,
+      name: config.name, email: config.email, phone: config.phone,
+      couponCode: config.couponCode
+    })
+  })
+  .then(r => r.json())
+  .then(order => {
+    if (order.error) throw { ocultOrderError: true, message: order.error };
+    config.statusSetter('', 'var(--text-muted)');
+    return loadPayPalSdk(order.clientId).then(function(paypal){ return { paypal, order }; });
+  })
+  .then(function(result){
+    const paypal = result.paypal, order = result.order;
+    paypal.Buttons({
+      style: { layout: 'vertical', color: 'gold', shape: 'pill', label: 'pay' },
+      createOrder: function(){ return order.orderId; },
+      onApprove: function(data){
+        config.statusSetter('Verifying payment…', 'var(--text-muted)');
+        return fetch(OCULTT_API + '/paypal/capture-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: data.orderID, bookingId: config.bookingId, bookingType: config.type })
+        })
+        .then(r => r.json())
+        .then(function(captureResult){
+          if (!captureResult.success) throw new Error(captureResult.error || 'Verification failed');
+          config.statusSetter('✓ Payment verified! Your booking is confirmed.', 'var(--sage)');
+          setTimeout(function(){ config.onApproved(data.orderID); }, 1200);
+        })
+        .catch(function(err){
+          config.statusSetter('✗ Payment verification failed: ' + err.message + '. Please contact support.', '#c0392b');
+        });
+      },
+      onCancel: function(){
+        config.statusSetter('Payment cancelled. You can try again above.', 'var(--text-muted)');
+      },
+      onError: function(err){
+        console.error('[PayPal]', err);
+        config.statusSetter('Payment could not be completed. Please try again or contact support.', '#c0392b');
+      }
+    }).render('#' + config.containerId);
+  })
+  .catch(function(err){
+    if (err && err.ocultOrderError) {
+      config.statusSetter('✗ ' + err.message, '#c0392b');
+    } else {
+      config.statusSetter('Could not connect to payment server. Please try again.', '#c0392b');
+    }
+    console.error('[initiatePayPalCheckout]', err);
+  });
+}
+
 function generateStars(){
   const c=document.getElementById('stars');
   for(let i=0;i<150;i++){
@@ -349,6 +527,141 @@ function smartBackHome(){
   }
 }
 
+// ── Deep-linking from real, crawlable landing pages (see /services/*) ──
+// Those pages link their "Book Now" CTA to /#tarot-booking etc. — without
+// this, the hash would sit unused and every visitor arriving from a
+// service page would land on the homepage instead of the booking flow
+// the link actually promised.
+(function(){
+  const targetId = (location.hash || '').replace('#','');
+  const validPageIds = ['tarot-booking','spell-booking','energy-healing','numerology-booking','group-booking','all-services','shop'];
+  if(targetId && validPageIds.includes(targetId)){
+    document.addEventListener('DOMContentLoaded', function(){
+      showPage(targetId);
+    });
+  }
+})();
+
+// ── Admin/CRM panel — loaded from a separate static file ──
+// The CRM markup used to sit directly in this page's HTML (page-admin),
+// which meant every anonymous visitor's browser (and every search
+// crawler) downloaded the entire dashboard/bookings/analytics UI along
+// with the public site, and search engines saw a document with a dozen+
+// H1 headings buried in it. It's now in admin-panel-fragment.html and
+// gets fetched and injected into the empty #page-admin mount point here,
+// starting as early as possible on page load — well before any real
+// admin user could reach it (getting to showPage('admin') requires a
+// hidden gesture plus a Google sign-in redirect, which takes far longer
+// than this fetch). showPage() still waits on window.OT_ADMIN_FRAGMENT_READY
+// before entering the admin page, as a safety net for the rare case the
+// fetch hasn't finished yet — see the id==='admin' check there.
+//
+// Every element ID inside the fragment is byte-for-byte identical to
+// before — this only changes WHEN the markup exists in the DOM, never
+// WHAT it contains, so every existing getElementById/onclick/CSS rule
+// throughout script.js and styles.css keeps working unchanged once the
+// fragment is in place. Nothing here alters admin logic or state.
+window._adminFragmentLoaded = false;
+window.OT_ADMIN_FRAGMENT_READY = fetch('/admin-panel-fragment.html')
+  .then(function(r){ if (!r.ok) throw new Error('admin fragment fetch failed: ' + r.status); return r.text(); })
+  .then(function(html){
+    const mount = document.getElementById('page-admin');
+    if (mount) mount.outerHTML = html;
+    window._adminFragmentLoaded = true;
+  })
+  .catch(function(err){
+    // If this ever fails (offline, path issue, etc.), #page-admin stays an
+    // empty mount — admin login still works exactly as before, it just
+    // won't have anything to show. Public-site visitors are completely
+    // unaffected either way.
+    console.error('[admin-panel-fragment]', err);
+    window._adminFragmentLoaded = true; // stop showPage('admin') waiting forever
+  });
+
+// ═══════════════════════════════════════════════════════════════════
+// Group Magic — auto-calculated New Moon / Full Moon dates.
+// Replaces the previously hardcoded, easily-stale session dates for
+// the two lunar-phase sessions with a real astronomical calculation,
+// so they never go stale again. Akankshaa can still override either
+// date from the admin panel (Availability tab) for a specific session
+// if she's unavailable — see /api/moon-events. Absent an override, the
+// site always shows the next real upcoming date automatically.
+//
+// The "Abundance Ritual" session (session-3) is a custom seasonal
+// ritual, not tied to a lunar phase, so it's NOT covered by this and
+// still needs a real date from Akankshaa directly — same as before.
+// ═══════════════════════════════════════════════════════════════════
+const OT_SYNODIC_MONTH_DAYS = 29.530588853;
+const OT_KNOWN_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14, 0); // a known reference New Moon
+const OT_MOON_EVENT_DEFAULT_TIME = { new_moon: '8:00 PM IST', full_moon: '9:00 PM IST' };
+
+// phaseFraction: 0 = New Moon, 0.5 = Full Moon
+function otNextMoonEventDate(phaseFraction, fromDate){
+  fromDate = fromDate || new Date();
+  const fromMs = fromDate.getTime();
+  const msPerCycle = OT_SYNODIC_MONTH_DAYS * 86400000;
+  const cyclesSinceKnown = (fromMs - OT_KNOWN_NEW_MOON_MS) / msPerCycle;
+  let n = Math.floor(cyclesSinceKnown - phaseFraction) + phaseFraction;
+  let eventMs = OT_KNOWN_NEW_MOON_MS + n * msPerCycle;
+  while (eventMs <= fromMs) { n += 1; eventMs = OT_KNOWN_NEW_MOON_MS + n * msPerCycle; }
+  return new Date(eventMs);
+}
+function otFormatMoonDate(date){
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+// Parses an admin override date string ('2026-09-14') into the same
+// display format as the calculated dates, so both look consistent.
+function otFormatOverrideDate(isoDateStr){
+  const d = new Date(isoDateStr + 'T00:00:00Z');
+  if (isNaN(d)) return isoDateStr; // fall back to whatever was typed
+  return otFormatMoonDate(d);
+}
+
+window.OT_MOON_EVENTS_READY = fetch(OCULTT_API + '/moon-events')
+  .then(r => r.json())
+  .then(data => data.overrides || {})
+  .catch(() => ({})); // any failure → no overrides, calculated dates still work
+
+function otResolveMoonEvent(eventType, phaseFraction){
+  return window.OT_MOON_EVENTS_READY.then(function(overrides){
+    const ov = overrides[eventType];
+    if (ov && ov.date) {
+      return { dateLabel: otFormatOverrideDate(ov.date), time: ov.time || OT_MOON_EVENT_DEFAULT_TIME[eventType] };
+    }
+    const calc = otNextMoonEventDate(phaseFraction);
+    return { dateLabel: otFormatMoonDate(calc), time: OT_MOON_EVENT_DEFAULT_TIME[eventType] };
+  });
+}
+
+// Updates the New Moon / Full Moon session cards on the Group Magic page
+// with the resolved date, preserving each card's existing "spots
+// remaining" text and icon exactly as authored.
+window.OT_MOON_EVENTS_READY.then(function(){
+  const cards = [
+    { id: 'group-session-1', name: 'New Moon Circle', type: 'new_moon', phase: 0 },
+    { id: 'group-session-2', name: 'Full Moon Release', type: 'full_moon', phase: 0.5 }
+  ];
+  cards.forEach(function(cfg){
+    otResolveMoonEvent(cfg.type, cfg.phase).then(function(resolved){
+      const dateTimeStr = resolved.dateLabel + ' · ' + resolved.time;
+      const el = document.getElementById(cfg.id);
+      if (!el) return;
+      const pEl = el.querySelector('p');
+      if (pEl) {
+        const spotsMatch = pEl.textContent.match(/·\s*(\d+\s*spots?\s*remaining)\s*$/i);
+        pEl.textContent = dateTimeStr + (spotsMatch ? ' · ' + spotsMatch[1] : '');
+      }
+      el.onclick = function(){ selectGroupSession(el, cfg.name, dateTimeStr); };
+      // Keep the pre-selected default (session-1, New Moon) in sync with
+      // the freshly-resolved date, since it's selected before any click.
+      if (el.classList.contains('selected')) {
+        selectedGroupSession = cfg.name;
+        selectedGroupDate = dateTimeStr;
+      }
+    });
+  });
+});
+
 // ── Keep the Back button inside the website ──
 // The site is a single-page app, so without this the browser's own Back
 // button would leave the site entirely (returning to whatever page the
@@ -386,6 +699,14 @@ function showPage(id, fromPopstate){
     }
     if (!fromPopstate) return; // stay put — don't push a history entry for a page they can't see
     id = 'home'; // came from Back/Forward landing on an old #admin entry — send them home instead
+  }
+  // Safety net — see the fragment loader above. In practice this almost
+  // never waits: the fetch starts the instant the page loads, and an
+  // admin reaching this point has already gone through a hidden gesture
+  // and a Google sign-in redirect, both far slower than this fetch.
+  if (id === 'admin' && !window._adminFragmentLoaded) {
+    window.OT_ADMIN_FRAGMENT_READY.then(function(){ showPage(id, fromPopstate); });
+    return;
   }
   const currentPage=document.querySelector('.page.active');
   // Remember which homepage section was in view before leaving, so the
@@ -1442,7 +1763,8 @@ function showConfirmation(){
   // (payment verified without going through initiateRazorpay as expected).
   const id    = _pendingBookingId || ('OT-'+Math.floor(100000+Math.random()*900000));
 
-  const price = selectedPriceOverride || PRICE_MAP[selectedDuration] || 'TBC';
+  const priceLabel = selectedPriceOverride || PRICE_MAP[selectedDuration] || null;
+  const price = priceLabel ? formatPrice(_extractPriceNumber(priceLabel)) : 'TBC';
   const isPhoneBooking = selectedReading && selectedReading.startsWith('Phone');
   const dateLabel = selectedDayLabel || (selectedDay ? 'Day '+selectedDay : (isPhoneBooking ? 'Booked via Calendly' : 'TBC'));
   const _audioQsArr = (() => {
@@ -1596,21 +1918,23 @@ function renderSpellPaymentView(){
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('spell-pay-name', nameOnly || b.package || '—');
   setText('spell-pay-urgency', b.urgency);
-  setText('spell-pay-base', '₹' + b.basePrice.toLocaleString('en-IN'));
+  setText('spell-pay-base', formatPrice(b.basePrice));
   const urgentRow = document.getElementById('spell-pay-urgent-row');
   if (urgentRow) {
     if (b.urgency === 'Urgent' && b.finalPrice > b.basePrice) {
       urgentRow.style.display = 'flex';
-      setText('spell-pay-urgent-fee', '+ ₹' + (b.finalPrice - b.basePrice).toLocaleString('en-IN') + ' (20% urgent fee)');
+      setText('spell-pay-urgent-fee', '+ ' + formatPrice(b.finalPrice - b.basePrice) + ' (20% urgent fee)');
     } else {
       urgentRow.style.display = 'none';
     }
   }
-  setText('spell-pay-total', '₹' + b.finalPrice.toLocaleString('en-IN'));
+  setText('spell-pay-total', formatPrice(b.finalPrice));
   resetCoupon('spell');
   refreshCouponDisplay('spell');
   const payBtn = document.getElementById('spell-rzp-pay-btn');
-  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateSpellRazorpay(); }; }
+  if (payBtn) { payBtn.style.display = ''; payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ payForSpellBooking(); }; }
+  const paypalContainer = document.getElementById('spell-paypal-container');
+  if (paypalContainer) { paypalContainer.style.display = 'none'; paypalContainer.innerHTML = ''; }
   const statusEl = document.getElementById('spell-rzp-status-msg');
   if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
 }
@@ -1630,7 +1954,7 @@ function spellRzpSetStatus(msg, color){
 function finalizeSpellBooking(b, paymentId){
   const finalBooking = {
     id: b.id, service: 'Spell / Magic', package: b.package,
-    price: '₹' + b.finalPrice.toLocaleString('en-IN'),
+    price: formatPrice(b.finalPrice),
     duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
     urgency: b.urgency, priority: b.priority,
     paymentStatus: 'Paid', razorpayPaymentId: paymentId,
@@ -1641,6 +1965,36 @@ function finalizeSpellBooking(b, paymentId){
   document.getElementById('spell-success-view').style.display = 'block';
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingSpellBooking = null;
+}
+
+function payForSpellBooking(){
+  const b = _pendingSpellBooking;
+  if (!b) return;
+  if (window.OT_CURRENCY === 'USD') {
+    initiatePayPalCheckout({
+      bookingId: b.id, type: 'spell', basePrice: b.basePrice, urgency: b.urgency,
+      name: b.name, email: b.email, phone: b.phone,
+      couponCode: _appliedCoupons.spell ? _appliedCoupons.spell.code : null,
+      payBtnId: 'spell-rzp-pay-btn', containerId: 'spell-paypal-container',
+      statusSetter: spellRzpSetStatus,
+      onApproved: function(paypalOrderId){
+        fetch(OCULTT_API + '/spells', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: b.id, name: b.name, email: b.email, phone: b.phone,
+            spellCategory: b.package, urgency: b.urgency, goal: b.intention,
+            detail: b.detail, notes: b.notes
+          })
+        })
+        .then(r => { if (!r.ok) console.warn('[payForSpellBooking] POST /spells did not succeed (status ' + r.status + ') — payment already verified against the placeholder row, but the request\'s full details may not have saved. Check the CRM.'); })
+        .catch(() => {})
+        .then(function(){ finalizeSpellBooking(b, 'PAYPAL-' + paypalOrderId); });
+      }
+    });
+  } else {
+    initiateSpellRazorpay();
+  }
 }
 
 function initiateSpellRazorpay(){
@@ -1857,11 +2211,13 @@ function renderGroupPaymentView(){
   if (!b) return;
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('group-pay-session', b.package || '—');
-  setText('group-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  setText('group-pay-total', formatPrice(b.basePrice));
   resetCoupon('group');
   refreshCouponDisplay('group');
   const payBtn = document.getElementById('group-rzp-pay-btn');
-  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; payBtn.onclick = function(){ initiateGroupRazorpay(); }; }
+  if (payBtn) { payBtn.style.display = ''; payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Registration →'; payBtn.onclick = function(){ payForGroupBooking(); }; }
+  const paypalContainer = document.getElementById('group-paypal-container');
+  if (paypalContainer) { paypalContainer.style.display = 'none'; paypalContainer.innerHTML = ''; }
   const statusEl = document.getElementById('group-rzp-status-msg');
   if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
 }
@@ -1883,7 +2239,7 @@ function finalizeGroupBooking(paymentId){
   if (b) {
     OculttDB.saveBooking({
       id: b.id, service: 'Group Magic', package: b.package,
-      price: '₹' + b.basePrice.toLocaleString('en-IN'),
+      price: formatPrice(b.basePrice),
       duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
       paymentStatus: 'Paid', razorpayPaymentId: paymentId,
       date: b.preferredDate, time: '', status: 'Booking Received', createdAt: new Date().toISOString()
@@ -1893,6 +2249,32 @@ function finalizeGroupBooking(paymentId){
   document.getElementById('group-success-view').style.display = 'block';
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingGroupBooking = null;
+}
+
+function payForGroupBooking(){
+  const b = _pendingGroupBooking;
+  if (!b) return;
+  if (window.OT_CURRENCY === 'USD') {
+    initiatePayPalCheckout({
+      bookingId: b.id, type: 'group_magic', basePrice: b.basePrice,
+      name: b.name, email: b.email, phone: b.phone,
+      couponCode: _appliedCoupons.group ? _appliedCoupons.group.code : null,
+      payBtnId: 'group-rzp-pay-btn', containerId: 'group-paypal-container',
+      statusSetter: groupRzpSetStatus,
+      onApproved: function(paypalOrderId){
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Group Magic', package: b.package, preferredDate: b.preferredDate, name: b.name, email: b.email, phone: b.phone, intention: b.intention })
+        })
+        .then(r => { if (!r.ok) console.warn('[payForGroupBooking] POST /bookings did not succeed (status ' + r.status + ') — payment already verified against the placeholder row, but the request\'s full details may not have saved. Check the CRM.'); })
+        .catch(() => {})
+        .then(function(){ finalizeGroupBooking('PAYPAL-' + paypalOrderId); });
+      }
+    });
+  } else {
+    initiateGroupRazorpay();
+  }
 }
 
 function initiateGroupRazorpay(){
@@ -2036,11 +2418,13 @@ function renderNumPaymentView(){
   const nameOnly = (b.package || '').replace(/\s*—\s*₹[\d,]+$/, '');
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('num-pay-name', nameOnly || b.package || '—');
-  setText('num-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  setText('num-pay-total', formatPrice(b.basePrice));
   resetCoupon('num');
   refreshCouponDisplay('num');
   const payBtn = document.getElementById('num-rzp-pay-btn');
-  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateNumRazorpay(); }; }
+  if (payBtn) { payBtn.style.display = ''; payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ payForNumBooking(); }; }
+  const paypalContainer = document.getElementById('num-paypal-container');
+  if (paypalContainer) { paypalContainer.style.display = 'none'; paypalContainer.innerHTML = ''; }
   const statusEl = document.getElementById('num-rzp-status-msg');
   if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
 }
@@ -2060,7 +2444,7 @@ function numRzpSetStatus(msg, color){
 function finalizeNumBooking(b, paymentId){
   const finalBooking = {
     id: b.id, service: 'Numerology', package: b.package,
-    price: '₹' + b.basePrice.toLocaleString('en-IN'),
+    price: formatPrice(b.basePrice),
     duration: '—', name: b.name, email: b.email, phone: b.phone, dob: b.dob, intention: '',
     paymentStatus: 'Paid', razorpayPaymentId: paymentId,
     date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
@@ -2070,6 +2454,32 @@ function finalizeNumBooking(b, paymentId){
   document.getElementById('num-success-view').style.display = 'block';
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingNumBooking = null;
+}
+
+function payForNumBooking(){
+  const b = _pendingNumBooking;
+  if (!b) return;
+  if (window.OT_CURRENCY === 'USD') {
+    initiatePayPalCheckout({
+      bookingId: b.id, type: 'numerology', basePrice: b.basePrice,
+      name: b.name, email: b.email, phone: b.phone,
+      couponCode: _appliedCoupons.num ? _appliedCoupons.num.code : null,
+      payBtnId: 'num-rzp-pay-btn', containerId: 'num-paypal-container',
+      statusSetter: numRzpSetStatus,
+      onApproved: function(paypalOrderId){
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Numerology', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.dob ? ('DOB: ' + b.dob) : null })
+        })
+        .then(r => { if (!r.ok) console.warn('[payForNumBooking] POST /bookings did not succeed (status ' + r.status + ') — payment already verified against the placeholder row, but the request\'s full details may not have saved. Check the CRM.'); })
+        .catch(() => {})
+        .then(function(){ finalizeNumBooking(b, 'PAYPAL-' + paypalOrderId); });
+      }
+    });
+  } else {
+    initiateNumRazorpay();
+  }
 }
 
 function initiateNumRazorpay(){
@@ -5579,7 +5989,7 @@ const GAUTH_STORAGE_KEY = 'ocultt_user_v1';
 
 // ── CRM ACCESS CONTROL ─────────────────────────────────────────────
 // Only Google accounts listed here may open the CRM. Add Akankshaa's real
-// Google email before deploying — e.g. ADMIN_EMAILS = ['akanksha@ocultt.com'].
+// Google email before deploying — e.g. ADMIN_EMAILS = ['the.ocultt.tarot@gmail.com'].
 // 'demo@ocultt.com' matches the built-in demo sign-in so the CRM gate can be
 // tested end-to-end before real Firebase credentials are configured.
 const ADMIN_EMAILS = ['demo@ocultt.com', 'ocultt05tarot@gmail.com', 'Akankshachoudhary10@gmail.com', 'dishasoni99@gmail.com', 'the.ocultt.tarot@gmail.com'];
@@ -6399,14 +6809,14 @@ function populatePaymentStep() {
   if (basePriceLabel && selectedTarotUrgency === 'Urgent') {
     const baseNum = _extractPriceNumber(basePriceLabel);
     const finalNum = Math.round(baseNum * 1.2);
-    if (tEl) tEl.textContent = '₹' + finalNum.toLocaleString('en-IN');
+    if (tEl) tEl.textContent = formatPrice(finalNum);
     if (urgentRow) {
       urgentRow.style.display = 'flex';
       const feeEl = document.getElementById('pay-urgent-fee');
-      if (feeEl) feeEl.textContent = '+ ₹' + (finalNum - baseNum).toLocaleString('en-IN') + ' (20% urgent fee)';
+      if (feeEl) feeEl.textContent = '+ ' + formatPrice(finalNum - baseNum) + ' (20% urgent fee)';
     }
   } else {
-    if (tEl) tEl.textContent = basePriceLabel || '—';
+    if (tEl) tEl.textContent = basePriceLabel ? formatPrice(_extractPriceNumber(basePriceLabel)) : '—';
     if (urgentRow) urgentRow.style.display = 'none';
   }
   refreshCouponDisplay('t');
@@ -6419,7 +6829,9 @@ function populatePaymentStep() {
 
   // Reset status message and button state each time step renders
   if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
-  if (payBtn)   { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = TEST_MODE ? 'Simulate Test Payment →' : 'Pay & Confirm Booking →'; }
+  if (payBtn)   { payBtn.style.display = ''; payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = TEST_MODE ? 'Simulate Test Payment →' : 'Pay & Confirm Booking →'; payBtn.onclick = function() { payForTarotBooking(); }; }
+  const paypalContainer = document.getElementById('rzp-paypal-container');
+  if (paypalContainer) { paypalContainer.style.display = 'none'; paypalContainer.innerHTML = ''; }
 
   // Start (or resume) the slot-hold countdown — gives gentle urgency to complete payment
   if (!_paymentVerified) startSlotHoldTimer();
@@ -6440,6 +6852,43 @@ function populatePaymentStep() {
 }
 
 // ── Launch Razorpay checkout ──────────────────────────────────────
+// ── Currency-gated entry point for the Tarot "Pay" button — this is the
+// ONLY thing that changed for India: previously the button called
+// initiateRazorpay() directly; now it calls this dispatcher, which calls
+// the exact same unchanged initiateRazorpay() for India, or the new
+// PayPal path for everyone else. ──
+function payForTarotBooking(){
+  if (window.OT_CURRENCY === 'USD') {
+    const name  = (document.getElementById('t-name')?.value  || '').trim() || 'Client';
+    const email = (document.getElementById('t-email')?.value || '').trim();
+    const phone = (document.getElementById('t-phone')?.value || '').trim();
+    const isAudioReading = selectedReading && selectedReading.startsWith('Audio');
+    if (!selectedReading || (!isAudioReading && !selectedDuration)) {
+      _showBanner('step4-error','Reading format not selected — please go back and choose one.');
+      return;
+    }
+    const priceKey = isAudioReading ? selectedReading : selectedDuration;
+    const bookingId = 'OT-' + Math.floor(100000 + Math.random() * 900000);
+    initiatePayPalCheckout({
+      bookingId, type: 'booking', duration: priceKey,
+      urgency: isAudioReading ? selectedTarotUrgency : null,
+      name, email, phone,
+      couponCode: _appliedCoupons.t ? _appliedCoupons.t.code : null,
+      payBtnId: 'rzp-pay-btn', containerId: 'rzp-paypal-container',
+      statusSetter: rzpSetStatus,
+      onApproved: function(paypalOrderId){
+        _paymentVerified  = true;
+        _rzpPaymentId     = 'PAYPAL-' + paypalOrderId;
+        _pendingBookingId = bookingId;
+        stopSlotHoldTimer(true);
+        if (tarotStep === 4) tarotNext(4);
+      }
+    });
+  } else {
+    initiateRazorpay();
+  }
+}
+
 function initiateRazorpay() {
   const name   = (document.getElementById('t-name')?.value  || '').trim() || 'Client';
   const email  = (document.getElementById('t-email')?.value || '').trim();
@@ -6863,6 +7312,41 @@ async function apiPatch(path, body) {
   if (!OCULTT_BACKEND_CONNECTED) throw new Error('No backend connected yet — using local storage');
   const r = await fetch(OCULTT_API + path, { method:'PATCH', headers: adminHeaders(), body: JSON.stringify(body) });
   return r.json();
+}
+
+// ── Group Magic moon-date overrides (Availability tab) ──────────────
+function moonOverrideSetStatus(msg, color){
+  const el = document.getElementById('moon-override-status');
+  if (!el) return;
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
+}
+async function saveMoonOverride(eventType){
+  const prefix = eventType === 'new_moon' ? 'moon-new' : 'moon-full';
+  const date = document.getElementById(prefix + '-date')?.value || '';
+  const time = document.getElementById(prefix + '-time')?.value.trim() || '';
+  if (!date) { moonOverrideSetStatus('Please pick a date first.', '#c0392b'); return; }
+  moonOverrideSetStatus('Saving…', 'var(--text-muted)');
+  try {
+    const result = await apiPost('/moon-events', { eventType, date, time });
+    if (result.error) throw new Error(result.error);
+    moonOverrideSetStatus('✓ Override saved — the site will show this date until cleared.', '#5BB888');
+  } catch (err) {
+    moonOverrideSetStatus('✗ ' + err.message, '#c0392b');
+  }
+}
+async function clearMoonOverride(eventType){
+  moonOverrideSetStatus('Clearing…', 'var(--text-muted)');
+  try {
+    const r = await fetch(OCULTT_API + '/moon-events/' + eventType, { method: 'DELETE', headers: { 'x-admin-key': getAdminKey() } });
+    const result = await r.json();
+    if (result.error) throw new Error(result.error);
+    const prefix = eventType === 'new_moon' ? 'moon-new' : 'moon-full';
+    const dateEl = document.getElementById(prefix + '-date'); if (dateEl) dateEl.value = '';
+    const timeEl = document.getElementById(prefix + '-time'); if (timeEl) timeEl.value = '';
+    moonOverrideSetStatus('✓ Override cleared — back to the automatically calculated date.', '#5BB888');
+  } catch (err) {
+    moonOverrideSetStatus('✗ ' + err.message, '#c0392b');
+  }
 }
 
 // ── Live bookings sync — pulls GET /api/bookings (Supabase, every non-spell
@@ -7719,11 +8203,13 @@ function renderEHPaymentView(){
   const nameOnly = (b.package || '').replace(/\s*—\s*₹[\d,]+$/, '');
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('eh-pay-name', nameOnly || b.package || '—');
-  setText('eh-pay-total', '₹' + b.basePrice.toLocaleString('en-IN'));
+  setText('eh-pay-total', formatPrice(b.basePrice));
   resetCoupon('eh');
   refreshCouponDisplay('eh');
   const payBtn = document.getElementById('eh-rzp-pay-btn');
-  if (payBtn) { payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ initiateEHRazorpay(); }; }
+  if (payBtn) { payBtn.style.display = ''; payBtn.disabled = false; payBtn.style.opacity = '1'; payBtn.textContent = 'Pay & Confirm Booking →'; payBtn.onclick = function(){ payForEHBooking(); }; }
+  const paypalContainer = document.getElementById('eh-paypal-container');
+  if (paypalContainer) { paypalContainer.style.display = 'none'; paypalContainer.innerHTML = ''; }
   const statusEl = document.getElementById('eh-rzp-status-msg');
   if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
 }
@@ -7743,7 +8229,7 @@ function ehRzpSetStatus(msg, color){
 function finalizeEHBooking(b, paymentId){
   const finalBooking = {
     id: b.id, service: 'Energy Healing', package: b.package,
-    price: '₹' + b.basePrice.toLocaleString('en-IN'),
+    price: formatPrice(b.basePrice),
     duration: '—', name: b.name, email: b.email, phone: b.phone, intention: b.intention,
     paymentStatus: 'Paid', razorpayPaymentId: paymentId,
     date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
@@ -7753,6 +8239,32 @@ function finalizeEHBooking(b, paymentId){
   document.getElementById('eh-success-view').style.display = 'block';
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingEHBooking = null;
+}
+
+function payForEHBooking(){
+  const b = _pendingEHBooking;
+  if (!b) return;
+  if (window.OT_CURRENCY === 'USD') {
+    initiatePayPalCheckout({
+      bookingId: b.id, type: 'energy_healing', basePrice: b.basePrice,
+      name: b.name, email: b.email, phone: b.phone,
+      couponCode: _appliedCoupons.eh ? _appliedCoupons.eh.code : null,
+      payBtnId: 'eh-rzp-pay-btn', containerId: 'eh-paypal-container',
+      statusSetter: ehRzpSetStatus,
+      onApproved: function(paypalOrderId){
+        fetch(OCULTT_API + '/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.id, service: 'Energy Healing', package: b.package, name: b.name, email: b.email, phone: b.phone, intention: b.intention })
+        })
+        .then(r => { if (!r.ok) console.warn('[payForEHBooking] POST /bookings did not succeed (status ' + r.status + ') — payment already verified against the placeholder row, but the request\'s full details may not have saved. Check the CRM.'); })
+        .catch(() => {})
+        .then(function(){ finalizeEHBooking(b, 'PAYPAL-' + paypalOrderId); });
+      }
+    });
+  } else {
+    initiateEHRazorpay();
+  }
 }
 
 function initiateEHRazorpay(){

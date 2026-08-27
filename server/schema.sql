@@ -88,6 +88,20 @@ create table if not exists availability_blocks (
   created_at timestamptz default now()
 );
 
+-- ── moon_event_overrides ── lets Akankshaa override the auto-calculated
+-- next New Moon / Full Moon date shown on the Group Magic page, for the
+-- rare case she's unavailable that day. event_type is the primary key —
+-- exactly one row per event type, upserted from the CRM. If a row is
+-- absent (or deleted), the site falls back to the astronomically
+-- calculated date automatically — nothing manual is required by default.
+create table if not exists moon_event_overrides (
+  event_type      text primary key,       -- 'new_moon' | 'full_moon'
+  override_date   text,                   -- e.g. '2026-09-14'
+  override_time   text,                   -- e.g. '8:00 PM IST'
+  note            text,
+  updated_at      timestamptz default now()
+);
+
 -- ── users ── every customer who has ever signed in with Google on the
 -- public site (NOT the CRM allowlist — see crm_users below for that).
 -- Saved automatically by POST /api/users/sync right after Firebase login.

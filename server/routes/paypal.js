@@ -37,11 +37,18 @@ if (!paypalConfigured) {
 // lookup, so prices are stable and predictable — Akanksha can update
 // PAYPAL_USD_RATE in Render's env whenever she wants to adjust it,
 // without a code change or redeploy of anything else.
+//
+// International pricing = real INR→USD conversion, then a 3x markup
+// (Disha's call, confirmed by Jess Aug 2026) — NOT the INR number
+// reused as-is in dollars. So ₹999 → ~$11.35 at the base rate →
+// ~$34.05 after the 3x. INTL_MARKUP is its own env-overridable knob,
+// separate from the FX rate, so either can be adjusted independently.
 const PAYPAL_API_BASE = 'https://api-m.paypal.com';
 const USD_RATE = Number(process.env.PAYPAL_USD_RATE) || 88; // ₹ per $1
+const INTL_MARKUP = Number(process.env.PAYPAL_INTL_MARKUP) || 3;
 
 function toUsd(rupees) {
-  return Math.round((rupees / USD_RATE) * 100) / 100; // 2 decimal places
+  return Math.round((rupees / USD_RATE) * INTL_MARKUP * 100) / 100; // 2 decimal places
 }
 
 const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
