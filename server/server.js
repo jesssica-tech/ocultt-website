@@ -29,6 +29,7 @@ const mediaRoute = require('./routes/media');
 const couponsRoute = require('./routes/coupons');
 const attachmentsRoute = require('./routes/attachments');
 const paypalRoute = require('./routes/paypal');
+const paypalWebhookRoute = require('./routes/paypalWebhook');
 const { supabase } = require('./db');
 // gmailAuthSetup.js is no longer mounted — email now sends via Resend
 // (see utils/mailer.js) instead of Gmail OAuth. The file itself is left
@@ -165,6 +166,7 @@ app.use('/api', mediaRoute);
 app.use('/api', couponsRoute.router);
 app.use('/api', attachmentsRoute);
 app.use('/api', paypalRoute);
+app.use('/api', paypalWebhookRoute);
 
 // ── 404 + error handling ──
 app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found' }));

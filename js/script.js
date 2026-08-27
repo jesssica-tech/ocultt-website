@@ -923,7 +923,21 @@ function updateProgress(){
 }
 
 function renderTarotStep(){
-  for(let i=1;i<=5;i++)document.getElementById('tarot-step-'+i).style.display=(i===tarotStep?'block':'none');
+  for(let i=1;i<=5;i++){
+    const stepEl=document.getElementById('tarot-step-'+i);
+    if(i===tarotStep){
+      stepEl.style.display='block';
+      // force layout so the browser registers the pre-transition state
+      // before is-active flips opacity/transform, so it actually animates
+      void stepEl.offsetHeight;
+      stepEl.classList.add('is-active');
+    } else if(stepEl.classList.contains('is-active')){
+      stepEl.classList.remove('is-active');
+      setTimeout(()=>{ if(!stepEl.classList.contains('is-active')) stepEl.style.display='none'; },280);
+    } else {
+      stepEl.style.display='none';
+    }
+  }
   updateProgress();
   if(tarotStep===2)buildCalendar();
   if(tarotStep===3){

@@ -141,7 +141,10 @@ router.post('/paypal/create-order', orderLimiter, async (req, res) => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ reference_id: bookingId, amount: { currency_code: 'USD', value: amountUsd.toFixed(2) } }]
+        // custom_id (not just reference_id) is what PayPal reliably carries
+        // through onto the capture webhook payload — routes/paypalWebhook.js
+        // needs it to match an incoming webhook back to this booking.
+        purchase_units: [{ reference_id: bookingId, custom_id: bookingId, amount: { currency_code: 'USD', value: amountUsd.toFixed(2) } }]
       }),
       signal: AbortSignal.timeout(15000)
     });

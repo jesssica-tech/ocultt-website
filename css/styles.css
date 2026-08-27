@@ -58,6 +58,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .nav-book::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(46,139,110,0.15),transparent);opacity:0;transition:opacity 0.3s}
 .nav-book:hover{background:var(--gold);color:var(--bg);box-shadow:0 0 20px rgba(46,139,110,0.3)}
 .nav-book:hover::before{opacity:1}
+.nav-book:active{transform:scale(0.96);transition:transform 0.1s ease-out}
 @media(max-width:1320px) and (min-width:769px){
   nav{padding:1rem 1.25rem}
   .nav-links{gap:0.85rem}
@@ -98,6 +99,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .cd-info-value{font-size:0.92rem;color:var(--text);font-weight:600}
 .cd-action-btn{font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:0.55rem 0.9rem;border:1px solid var(--border-bright);background:transparent;color:var(--gold-dk);cursor:pointer;transition:all 0.25s;border-radius:4px;text-decoration:none;display:inline-flex;align-items:center;gap:0.4rem}
 .cd-action-btn:hover{background:var(--gold-dk);color:#fff}
+.cd-action-btn:active{transform:scale(0.95);background:var(--gold-dk);color:#fff;transition:transform 0.1s ease-out}
 .cd-action-btn.danger{border-color:rgba(192,57,43,0.4);color:#C0392B}
 .cd-action-btn.danger:hover{background:#C0392B;color:#fff}
 .cd-timeline-item{position:relative;padding:0.9rem 0 0.9rem 1.4rem;border-left:2px solid var(--border);margin-left:0.3rem}
@@ -181,11 +183,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .nav-drawer-link:hover{color:var(--gold);background:rgba(46,139,110,0.05);border-left-color:rgb(40,122,97)}
 .nav-drawer-link-dot{width:4px;height:4px;border:1px solid rgba(46,139,110,0.4);transform:rotate(45deg);flex-shrink:0;transition:background 0.25s}
 .nav-drawer-link:hover .nav-drawer-link-dot{background:var(--gold);border-color:var(--gold)}
+.nav-drawer-link:active{background:rgba(46,139,110,0.1);transition:background 0.1s ease-out}
 .nav-drawer-divider{height:1px;background:var(--border);margin:0.5rem 1.5rem}
 
 .nav-drawer-foot{padding:1.5rem}
 .nav-drawer-book-btn{width:100%;background:linear-gradient(135deg,var(--gold-dk),var(--gold));color:white;font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;letter-spacing:0.22em;padding:1rem;border:none;cursor:pointer;text-transform:uppercase;transition:all 0.35s;box-shadow:0 4px 20px rgba(46,139,110,0.22)}
 .nav-drawer-book-btn:hover{box-shadow:0 6px 28px rgba(46,139,110,0.38);transform:translateY(-1px)}
+.nav-drawer-book-btn:active{transform:scale(0.97);transition:transform 0.1s ease-out}
 
 /* ── GEOMETRIC BACKGROUND ── */
 .stars-bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
@@ -285,10 +289,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .btn-primary::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.12);opacity:0;transition:opacity 0.3s}
 .btn-primary:hover{box-shadow:0 6px 28px rgba(46,139,110,0.4);transform:translateY(-1px)}
 .btn-primary:hover::after{opacity:1}
+.btn-primary:active{transform:scale(0.97);transition:transform 0.1s ease-out}
 .btn-secondary{background:transparent;border:1px solid var(--border-bright);color:var(--gold);font-family:'Gudlak Bold',sans-serif;font-size:0.72rem;letter-spacing:0.22em;padding:1rem 2.5rem;cursor:pointer;text-transform:uppercase;transition:all 0.35s;position:relative;overflow:hidden;border-radius:4px}
 .btn-secondary::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(46,139,110,0.08),transparent);opacity:0;transition:opacity 0.3s}
 .btn-secondary:hover{background:rgba(46,139,110,0.08);border-color:var(--gold);box-shadow:inset 0 0 20px rgba(46,139,110,0.08)}
 .btn-secondary:hover::before{opacity:1}
+.btn-secondary:active{transform:scale(0.97);background:rgba(46,139,110,0.08);transition:transform 0.1s ease-out}
 
 /* ── SECTION STYLES ── */
 /* V27: Standardised to 5rem top/bottom throughout. Individual overrides removed below. */
@@ -654,6 +660,7 @@ footer{padding:1.75rem 1.25rem 1.5rem;border-top:1px solid var(--border);max-wid
 .footer-social{display:flex;gap:1rem}
 .social-link{width:36px;height:36px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.3s;font-size:0.8rem;color:var(--text-dim);border-radius:6px}
 .social-link:hover{border-color:var(--gold);color:var(--gold)}
+.social-link:active{transform:scale(0.92);transition:transform 0.1s ease-out}
 
 /* ── BOOKING PAGES ── */
 .booking-page{min-height:100vh;min-height:100dvh;padding:8rem 2rem 4rem;max-width:750px;margin:0 auto;position:relative;z-index:1}
@@ -863,6 +870,7 @@ textarea{resize:vertical;min-height:100px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .cal-day-name{font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;color:var(--text-dim);text-align:center;text-transform:uppercase;padding:0.5rem 0;margin-bottom:0.5rem}
 .cal-day{aspect-ratio:1;min-height:44px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;cursor:pointer;transition:all 0.3s;border:1px solid transparent;color:var(--text-muted)}
+.cal-day:active{background:rgba(46,139,110,0.12);transition:background 0.1s ease-out}
 .cal-day.available:hover{border-color:rgb(40,122,97);background:rgba(46,139,110,0.08);color:var(--gold)}
 .cal-day.selected{background:var(--gold);color:var(--bg);font-weight:600}
 .cal-day.empty,.cal-day.past{color:var(--text-dim);cursor:default;opacity:0.3}
@@ -872,6 +880,7 @@ textarea{resize:vertical;min-height:100px}
 .slots-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem}
 .time-slot{border:1px solid var(--border);padding:0.6rem;text-align:center;font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;letter-spacing:0.1em;color:var(--text-muted);cursor:pointer;transition:all 0.3s;position:relative;border-radius:4px}
 .time-slot:hover{border-color:var(--gold);color:var(--gold)}
+.time-slot:active{background:rgba(46,139,110,0.1);transition:background 0.1s ease-out}
 .time-slot.selected{background:linear-gradient(135deg,#1A7055,#0F4A38);border-color:#1A7055;color:#FFFFFF;font-weight:600}
 .slot-left-tag{display:block;margin-top:0.3rem;font-family:'Montserrat',sans-serif;font-style:italic;font-size:0.62rem;letter-spacing:0.02em;color:#a8552f;text-transform:none}
 .slot-left-tag.urgent{color:#c4453c}
@@ -1060,6 +1069,9 @@ tr:hover td{background:rgba(46,139,110,0.03)}
 
 /* ── SCROLL REVEAL ── */
 .reveal{opacity:0;transform:translateY(30px);transition:opacity 0.75s cubic-bezier(0.22,0.8,0.32,1),transform 0.75s cubic-bezier(0.22,0.8,0.32,1)}
+.tarot-step{opacity:0;transform:translateY(8px);transition:opacity 0.28s ease-out,transform 0.28s cubic-bezier(0.22,0.8,0.32,1)}
+.tarot-step.is-active{opacity:1;transform:translateY(0)}
+@media(prefers-reduced-motion:reduce){.tarot-step{transition:opacity 0.15s linear;transform:none!important}}
 .reveal.visible{opacity:1;transform:none}
 .reveal-left{opacity:0;transform:translateX(-26px);transition:opacity 0.75s cubic-bezier(0.22,0.8,0.32,1),transform 0.75s cubic-bezier(0.22,0.8,0.32,1)}
 .reveal-left.visible{opacity:1;transform:none}
