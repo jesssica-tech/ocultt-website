@@ -62,8 +62,18 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
   fetch('https://get.geojs.io/v1/ip/country.json', { signal: AbortSignal.timeout(3500) })
     .then(r => r.json())
     .then(data => {
-      window.OT_COUNTRY = data && data.country_code || null;
-      resolve(finish(window.OT_COUNTRY === 'IN' ? 'INR' : 'USD'));
+      // Only trust a real, well-formed 2-letter country code as proof of a
+      // non-India location. Ad-blockers and privacy extensions commonly
+      // intercept geolocation requests like this one and return an empty
+      // (but "successful") response rather than blocking it outright —
+      // treating that as "confirmed not India" was the bug that showed
+      // USD pricing to an Indian visitor. Anything short of a genuine,
+      // valid code now falls back to India/INR, same as an outright
+      // network failure below.
+      const code = data && typeof data.country_code === 'string' && data.country_code.length === 2
+        ? data.country_code : null;
+      window.OT_COUNTRY = code;
+      resolve(finish(code && code !== 'IN' ? 'USD' : 'INR'));
     })
     .catch(() => resolve(finish('INR'))); // any failure → India/INR, never guess
 });
@@ -3393,7 +3403,13 @@ const OculttDB = (() => {
     save(CUSTOMERS_KEY, customers);
   }
 
-  function getBookings() { return load(BOOKINGS_KEY); }
+  // Newest booking first, everywhere this is used across the CRM — a
+  // booking made today should always appear above yesterday's, which
+  // appears above older ones, regardless of the order they happened to
+  // sync/load in from the database.
+  function getBookings() {
+    return load(BOOKINGS_KEY).slice().sort((a, b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
+  }
   function getCustomers() { return load(CUSTOMERS_KEY); }
   function clearBookings() { save(BOOKINGS_KEY, []); save(CUSTOMERS_KEY, []); }
 
@@ -4137,6 +4153,8 @@ async function renderAdminBookings(forceSync) {
   );
 
   // ── Payments quick-view: unpaid bookings first, so they're never buried ──
+  // (stable sort — OculttDB.getBookings() above is already newest-first,
+  // so ties within "unpaid" or "paid" keep that order)
   if (_bookingsSortUnpaidFirst) {
     bookings = bookings.slice().sort((a, b) => {
       const aUnpaid = (a.paymentStatus||'').toLowerCase() !== 'paid';

@@ -18,6 +18,11 @@
 }
 html{scroll-behavior:smooth;overflow-x:hidden;max-width:100%;color-scheme:light only}
 body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;min-height:100vh;min-height:100dvh;color-scheme:light only}
+/* Site-wide heading font — Gudlak Bold for every heading, everywhere.
+   Specific selectors elsewhere (e.g. .booking-header h1) still win where
+   they exist; this just fills in the gap for any heading that doesn't
+   already have one, so nothing silently falls back to the body font. */
+h1,h2,h3,h4,h5,h6{font-family:'Gudlak Bold',sans-serif}
 /* Focus visible for keyboard navigation */
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
