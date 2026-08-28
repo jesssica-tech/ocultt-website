@@ -71,6 +71,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 /* ── HAMBURGER MENU (C-01 fix) ── */
 .nav-hamburger{display:none;flex-direction:column;justify-content:center;align-items:center;gap:5px;width:40px;height:40px;background:transparent;border:1px solid var(--border);cursor:pointer;padding:0;transition:border-color 0.3s;flex-shrink:0;border-radius:4px}
 .nav-hamburger:hover{border-color:var(--border-bright)}
+.nav-hamburger:active{transform:scale(0.92);transition:transform 0.1s ease-out}
 .nav-hamburger span{display:block;width:18px;height:1px;background:var(--gold);transition:all 0.35s cubic-bezier(0.22,0.8,0.32,1);transform-origin:center}
 .nav-hamburger.is-open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
 .nav-hamburger.is-open span:nth-child(2){opacity:0;transform:scaleX(0)}
@@ -135,6 +136,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:fl
 .fa-file-actions{display:flex;gap:0.35rem;flex-shrink:0}
 .fa-file-action-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;border-radius:4px;font-size:0.75rem;transition:all 0.2s}
 .fa-file-action-btn:hover{border-color:var(--gold-dk);color:var(--gold-dk)}
+.fa-file-action-btn:active{transform:scale(0.9);transition:transform 0.1s ease-out}
 .fa-file-action-btn.danger:hover{border-color:#C0392B;color:#C0392B}
 .fa-audio-row .fa-file-info{width:100%}
 .fa-audio-row audio{width:100%;height:32px;margin-top:0.3rem}
@@ -866,6 +868,7 @@ textarea{resize:vertical;min-height:100px}
 .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
 .cal-nav{background:transparent;border:1px solid var(--border);color:var(--gold);width:32px;height:32px;cursor:pointer;font-size:0.9rem;transition:all 0.3s;border-radius:4px}
 .cal-nav:hover{background:rgba(46,139,110,0.1)}
+.cal-nav:active{transform:scale(0.93);transition:transform 0.1s ease-out}
 .cal-month{font-family:'Gudlak Bold',sans-serif;font-size:0.85rem;letter-spacing:0.2em;color:var(--text);text-transform:uppercase}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .cal-day-name{font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.1em;color:var(--text-dim);text-align:center;text-transform:uppercase;padding:0.5rem 0;margin-bottom:0.5rem}
@@ -908,6 +911,7 @@ textarea{resize:vertical;min-height:100px}
 .admin-notif-wrap{position:fixed;top:calc(var(--crm-nav-h,140px) + 10px);right:18px;z-index:90}
 .admin-mobile-hamburger{display:none;flex-direction:column;justify-content:center;align-items:center;gap:5px;position:fixed;top:calc(var(--crm-nav-h,140px) + 10px);left:18px;width:40px;height:40px;background:#fff;border:1px solid var(--border);cursor:pointer;padding:0;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,0.08);transition:border-color 0.3s;z-index:210}
 .admin-mobile-hamburger:hover{border-color:var(--gold)}
+.admin-mobile-hamburger:active{transform:scale(0.92);transition:transform 0.1s ease-out}
 .admin-mobile-hamburger span{display:block;width:16px;height:1px;background:var(--gold-dk);transition:all 0.35s cubic-bezier(0.22,0.8,0.32,1);transform-origin:center}
 .admin-mobile-hamburger.is-open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
 .admin-mobile-hamburger.is-open span:nth-child(2){opacity:0;transform:scaleX(0)}
@@ -916,6 +920,7 @@ textarea{resize:vertical;min-height:100px}
 .admin-sidebar-overlay.is-open{opacity:1;pointer-events:all}
 .admin-notif-bell{display:flex;align-items:center;gap:0.5rem;background:#fff;border:1px solid var(--border);cursor:pointer;padding:0.55rem 0.9rem;font-family:'Gudlak Bold',sans-serif;font-size:0.62rem;letter-spacing:0.14em;color:var(--text-dim);text-transform:uppercase;border-radius:999px;transition:all 0.25s;box-shadow:0 4px 14px rgba(0,0,0,0.08)}
 .admin-notif-bell:hover{border-color:var(--gold);color:var(--gold-dk)}
+.admin-notif-bell:active{transform:scale(0.96);transition:transform 0.1s ease-out}
 .admin-notif-badge{background:var(--gold-dk,#946C4F);color:#fff;border-radius:999px;min-width:18px;height:18px;padding:0 5px;display:none;align-items:center;justify-content:center;font-size:0.68rem;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:0;line-height:1}
 .admin-notif-badge.has-items{display:inline-flex}
 .admin-notif-panel{position:absolute;top:calc(100% + 8px);right:0;width:340px;background:#fff;border:1px solid var(--border);box-shadow:0 12px 32px rgba(0,0,0,0.14);border-radius:8px;max-height:420px;overflow-y:auto;display:none;z-index:91}
@@ -930,6 +935,7 @@ textarea{resize:vertical;min-height:100px}
 .admin-notif-empty{padding:1.5rem 1rem;text-align:center;font-family:'Montserrat',sans-serif;font-size:0.85rem;color:var(--text-dim);font-style:italic}
 .admin-nav-item{display:flex;align-items:center;gap:0.9rem;padding:0.95rem 1.75rem;cursor:pointer;transition:all 0.3s;font-family:'Gudlak Bold',sans-serif;font-size:0.7rem;letter-spacing:0.15em;color:var(--text-dim);text-transform:uppercase;border-left:2px solid transparent}
 .admin-nav-item:hover{color:var(--text);background:rgba(46,139,110,0.05)}
+.admin-nav-item:active{background:rgba(46,139,110,0.1);transition:background 0.1s ease-out}
 .admin-nav-item.active{color:var(--gold);border-left-color:var(--gold);background:rgba(46,139,110,0.08)}
 .admin-nav-item span:first-child{font-size:1.05rem;width:20px;text-align:center;flex-shrink:0}
 .admin-sidebar-back{padding:1.75rem;margin-top:1.75rem}
@@ -995,6 +1001,7 @@ tr:hover td{background:rgba(46,139,110,0.03)}
 .client-email{font-size:0.78rem;color:var(--text-dim);margin-top:1px}
 .crm-row-clickable{cursor:pointer;transition:background-color 0.15s}
 .crm-row-clickable:hover{background:rgba(46,139,110,0.05)}
+.crm-row-clickable:active{background:rgba(46,139,110,0.1);transition:background-color 0.1s ease-out}
 
 /* ── ADMIN RECENT ACTIVITY ── */
 .activity-list{padding:0 1.5rem}

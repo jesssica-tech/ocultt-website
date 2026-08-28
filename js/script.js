@@ -756,10 +756,26 @@ function showPage(id, fromPopstate){
         renderTarotStep();
       }
     }
-    if(id==='spell-booking'){document.getElementById('spell-form-view').style.display='block';document.getElementById('spell-success-view').style.display='none';}
-    if(id==='group-booking'){document.getElementById('group-form-view').style.display='block';document.getElementById('group-success-view').style.display='none';}
-    if(id==='energy-healing'){document.getElementById('eh-form-view').style.display='block';document.getElementById('eh-success-view').style.display='none';}
-    if(id==='numerology-booking'){document.getElementById('num-form-view').style.display='block';document.getElementById('num-success-view').style.display='none';}
+    if(id==='spell-booking'){document.getElementById('spell-form-view').style.display='block';document.getElementById('spell-success-view').style.display='none';
+      const spellCat=document.getElementById('spell-step-category'); if(spellCat){spellCat.style.display='block'; void spellCat.offsetHeight; spellCat.classList.add('is-active');}
+      const spellSpells=document.getElementById('spell-step-spells'); if(spellSpells) spellSpells.classList.remove('is-active');
+      const spellPay=document.getElementById('spell-payment-view'); if(spellPay) spellPay.classList.remove('is-active');
+    }
+    if(id==='group-booking'){
+      const groupForm=document.getElementById('group-form-view'); if(groupForm){groupForm.style.display='block'; void groupForm.offsetHeight; groupForm.classList.add('is-active');}
+      const groupSuccess=document.getElementById('group-success-view'); if(groupSuccess){groupSuccess.style.display='none'; groupSuccess.classList.remove('is-active');}
+      const groupPay=document.getElementById('group-payment-view'); if(groupPay) groupPay.classList.remove('is-active');
+    }
+    if(id==='energy-healing'){
+      const ehForm=document.getElementById('eh-form-view'); if(ehForm){ehForm.style.display='block'; void ehForm.offsetHeight; ehForm.classList.add('is-active');}
+      const ehSuccess=document.getElementById('eh-success-view'); if(ehSuccess){ehSuccess.style.display='none'; ehSuccess.classList.remove('is-active');}
+      const ehPay=document.getElementById('eh-payment-view'); if(ehPay) ehPay.classList.remove('is-active');
+    }
+    if(id==='numerology-booking'){
+      const numForm=document.getElementById('num-form-view'); if(numForm){numForm.style.display='block'; void numForm.offsetHeight; numForm.classList.add('is-active');}
+      const numSuccess=document.getElementById('num-success-view'); if(numSuccess){numSuccess.style.display='none'; numSuccess.classList.remove('is-active');}
+      const numPay=document.getElementById('num-payment-view'); if(numPay) numPay.classList.remove('is-active');
+    }
     if(id==='admin'){updateAdminGreeting();renderDashboard(true);}
     const bookingPages=['tarot-booking','spell-booking','group-booking','numerology-booking'];
     const aiBtn=document.getElementById('aiGuideBtn');
@@ -922,6 +938,27 @@ function updateProgress(){
   });
 }
 
+// ── Shared step/view fade-swap helper — same cross-fade pattern as
+// renderTarotStep() below, reused by the Spell/Group Magic/Numerology/
+// Energy Healing flows so every booking flow's step transitions feel
+// consistent instead of each one hard-cutting with display:none/block. ──
+function swapStep(hideId, showId){
+  const hideEl = hideId ? document.getElementById(hideId) : null;
+  const showEl = showId ? document.getElementById(showId) : null;
+  if(hideEl){
+    if(hideEl.classList.contains('is-active')){
+      hideEl.classList.remove('is-active');
+      setTimeout(()=>{ if(!hideEl.classList.contains('is-active')) hideEl.style.display='none'; },280);
+    } else {
+      hideEl.style.display='none';
+    }
+  }
+  if(showEl){
+    showEl.style.display='block';
+    void showEl.offsetHeight;
+    showEl.classList.add('is-active');
+  }
+}
 function renderTarotStep(){
   for(let i=1;i<=5;i++){
     const stepEl=document.getElementById('tarot-step-'+i);
@@ -1606,15 +1643,13 @@ function openSpellCategory(catKey) {
   `).join('');
 
   // Show spells step, hide category step
-  document.getElementById('spell-step-category').style.display = 'none';
-  document.getElementById('spell-step-spells').style.display = 'block';
+  swapStep('spell-step-category', 'spell-step-spells');
   document.getElementById('spell-selected-display').style.display = 'none';
   window.scrollTo({top: 0, behavior:'smooth'});
 }
 
 function backToCategories() {
-  document.getElementById('spell-step-category').style.display = 'block';
-  document.getElementById('spell-step-spells').style.display = 'none';
+  swapStep('spell-step-spells', 'spell-step-category');
   selectedSpell = '';
   window.scrollTo({top: 0, behavior:'smooth'});
 }
@@ -1927,8 +1962,7 @@ function submitSpell(){
   };
 
   renderSpellPaymentView();
-  document.getElementById('spell-step-spells').style.display = 'none';
-  document.getElementById('spell-payment-view').style.display = 'block';
+  swapStep('spell-step-spells', 'spell-payment-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -1964,8 +1998,7 @@ function renderSpellPaymentView(){
 }
 
 function backFromSpellPayment(){
-  document.getElementById('spell-payment-view').style.display = 'none';
-  document.getElementById('spell-step-spells').style.display = 'block';
+  swapStep('spell-payment-view', 'spell-step-spells');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -1985,8 +2018,7 @@ function finalizeSpellBooking(b, paymentId){
     date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(finalBooking);
-  document.getElementById('spell-payment-view').style.display = 'none';
-  document.getElementById('spell-success-view').style.display = 'block';
+  swapStep('spell-payment-view', 'spell-success-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingSpellBooking = null;
 }
@@ -2222,8 +2254,7 @@ function submitGroup(){
   };
 
   renderGroupPaymentView();
-  document.getElementById('group-form-view').style.display = 'none';
-  document.getElementById('group-payment-view').style.display = 'block';
+  swapStep('group-form-view', 'group-payment-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -2247,8 +2278,7 @@ function renderGroupPaymentView(){
 }
 
 function backFromGroupPayment(){
-  document.getElementById('group-payment-view').style.display = 'none';
-  document.getElementById('group-form-view').style.display = 'block';
+  swapStep('group-payment-view', 'group-form-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -2269,8 +2299,7 @@ function finalizeGroupBooking(paymentId){
       date: b.preferredDate, time: '', status: 'Booking Received', createdAt: new Date().toISOString()
     });
   }
-  document.getElementById('group-payment-view').style.display = 'none';
-  document.getElementById('group-success-view').style.display = 'block';
+  swapStep('group-payment-view', 'group-success-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingGroupBooking = null;
 }
@@ -2428,8 +2457,7 @@ function submitNum(){
   _pendingNumBooking = { id, service: 'Numerology', package: selectedNum, basePrice, name, email, phone, dob };
 
   renderNumPaymentView();
-  document.getElementById('num-form-view').style.display = 'none';
-  document.getElementById('num-payment-view').style.display = 'block';
+  swapStep('num-form-view', 'num-payment-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -2454,8 +2482,7 @@ function renderNumPaymentView(){
 }
 
 function backFromNumPayment(){
-  document.getElementById('num-payment-view').style.display = 'none';
-  document.getElementById('num-form-view').style.display = 'block';
+  swapStep('num-payment-view', 'num-form-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -2474,8 +2501,7 @@ function finalizeNumBooking(b, paymentId){
     date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(finalBooking);
-  document.getElementById('num-payment-view').style.display = 'none';
-  document.getElementById('num-success-view').style.display = 'block';
+  swapStep('num-payment-view', 'num-success-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingNumBooking = null;
 }
@@ -8221,8 +8247,7 @@ function submitEnergyHealing() {
   _pendingEHBooking = { id, service: 'Energy Healing', package: service, basePrice, name, email, phone, intention: intent };
 
   renderEHPaymentView();
-  document.getElementById('eh-form-view').style.display = 'none';
-  document.getElementById('eh-payment-view').style.display = 'block';
+  swapStep('eh-form-view', 'eh-payment-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -8247,8 +8272,7 @@ function renderEHPaymentView(){
 }
 
 function backFromEHPayment(){
-  document.getElementById('eh-payment-view').style.display = 'none';
-  document.getElementById('eh-form-view').style.display = 'block';
+  swapStep('eh-payment-view', 'eh-form-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -8267,8 +8291,7 @@ function finalizeEHBooking(b, paymentId){
     date: 'TBC', time: 'TBC', status: 'Booking Received', createdAt: new Date().toISOString()
   };
   OculttDB.saveBooking(finalBooking);
-  document.getElementById('eh-payment-view').style.display = 'none';
-  document.getElementById('eh-success-view').style.display = 'block';
+  swapStep('eh-payment-view', 'eh-success-view');
   window.scrollTo({top: 0, behavior: 'smooth'});
   _pendingEHBooking = null;
 }
