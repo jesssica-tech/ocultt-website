@@ -52,12 +52,32 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
     }
   } catch(e) { /* sessionStorage unavailable — fall through to detect */ }
 
-  const timeout = setTimeout(function(){ resolve(finish('INR')); }, 4000);
+  // Two independent geolocation providers, tried one after the other —
+  // a real (documented) outage or a blocked/slow request on the first
+  // provider alone used to send everyone straight to the India/INR
+  // fallback. Only fail safe to INR if BOTH providers come back empty
+  // or fail, not just one. Same trust rule as before applies to each:
+  // only a genuine, well-formed 2-letter code counts as "not India".
+  const timeout = setTimeout(function(){ resolve(finish('INR')); }, 7000);
   function finish(currency){
     clearTimeout(timeout);
     window.OT_CURRENCY = currency;
     try { sessionStorage.setItem('ot_currency', currency); } catch(e){}
     return currency;
+  }
+  function currencyFromCode(code){
+    return code && code !== 'IN' ? 'USD' : 'INR';
+  }
+  function tryIpapiFallback(){
+    fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) })
+      .then(r => r.json())
+      .then(data => {
+        const code = data && typeof data.country_code === 'string' && data.country_code.length === 2
+          ? data.country_code : null;
+        window.OT_COUNTRY = code;
+        resolve(finish(currencyFromCode(code)));
+      })
+      .catch(() => resolve(finish('INR'))); // both providers failed → India/INR, never guess
   }
   fetch('https://get.geojs.io/v1/ip/country.json', { signal: AbortSignal.timeout(3500) })
     .then(r => r.json())
@@ -68,14 +88,18 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
       // (but "successful") response rather than blocking it outright —
       // treating that as "confirmed not India" was the bug that showed
       // USD pricing to an Indian visitor. Anything short of a genuine,
-      // valid code now falls back to India/INR, same as an outright
-      // network failure below.
+      // valid code falls through to the second provider below, same as
+      // an outright network failure.
       const code = data && typeof data.country_code === 'string' && data.country_code.length === 2
         ? data.country_code : null;
-      window.OT_COUNTRY = code;
-      resolve(finish(code && code !== 'IN' ? 'USD' : 'INR'));
+      if (code) {
+        window.OT_COUNTRY = code;
+        resolve(finish(currencyFromCode(code)));
+      } else {
+        tryIpapiFallback();
+      }
     })
-    .catch(() => resolve(finish('INR'))); // any failure → India/INR, never guess
+    .catch(() => tryIpapiFallback()); // first provider failed — try the second before giving up
 });
 
 function otToUsd(rupees){
