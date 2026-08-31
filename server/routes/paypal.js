@@ -48,7 +48,7 @@ const USD_RATE = Number(process.env.PAYPAL_USD_RATE) || 88; // ₹ per $1
 const INTL_MARKUP = Number(process.env.PAYPAL_INTL_MARKUP) || 3;
 
 function toUsd(rupees) {
-  return Math.round((rupees / USD_RATE) * INTL_MARKUP * 100) / 100; // 2 decimal places
+  return Math.round((rupees / USD_RATE) * INTL_MARKUP); // whole dollars — matches rounded price shown on-screen
 }
 
 const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });

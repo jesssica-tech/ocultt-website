@@ -103,14 +103,14 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
 });
 
 function otToUsd(rupees){
-  return Math.round((rupees / OT_USD_RATE) * OT_INTL_MARKUP * 100) / 100;
+  return Math.round((rupees / OT_USD_RATE) * OT_INTL_MARKUP);
 }
 // Central display formatter — every customer-facing price should render
 // through this so India and international visitors always see a price
 // consistent with what they'll actually be charged.
 function formatPrice(rupees){
   rupees = Number(rupees) || 0;
-  if (window.OT_CURRENCY === 'USD') return '$' + otToUsd(rupees).toFixed(2);
+  if (window.OT_CURRENCY === 'USD') return '$' + otToUsd(rupees);
   return '₹' + rupees.toLocaleString('en-IN');
 }
 
@@ -129,6 +129,7 @@ window.OT_CURRENCY_READY.then(function(currency){
   document.querySelectorAll('.currency-badge').forEach(function(el){
     el.textContent = '$ USD';
   });
+  localizeSpellCategoryPrices();
   document.querySelectorAll('select option[value*="|"]').forEach(function(opt){
     const parts = opt.value.split('|');
     const rupees = Number(parts[1]);
@@ -784,6 +785,8 @@ function showPage(id, fromPopstate){
       const spellCat=document.getElementById('spell-step-category'); if(spellCat){spellCat.style.display='block'; void spellCat.offsetHeight; spellCat.classList.add('is-active');}
       const spellSpells=document.getElementById('spell-step-spells'); if(spellSpells) spellSpells.classList.remove('is-active');
       const spellPay=document.getElementById('spell-payment-view'); if(spellPay) spellPay.classList.remove('is-active');
+      localizeSpellCategoryPrices();
+      window.OT_CURRENCY_READY.then(localizeSpellCategoryPrices);
     }
     if(id==='group-booking'){
       const groupForm=document.getElementById('group-form-view'); if(groupForm){groupForm.style.display='block'; void groupForm.offsetHeight; groupForm.classList.add('is-active');}
@@ -1646,6 +1649,32 @@ const SPELL_CATEGORIES = {
   },
 };
 
+// SPELL_CATEGORIES stores every price as an authored ₹ string (e.g. '₹1,666',
+// '₹8,888/month', or embedded in a sentence like 'All spells from ₹1,666.').
+// This converts any such ₹amount inside a string to the visitor's detected
+// currency via formatPrice(), leaving surrounding text (like "/month") intact.
+function _localizePriceText(str) {
+  return String(str).replace(/₹[\d,]+/g, function(match) {
+    return formatPrice(Number(match.replace(/[₹,]/g, '')));
+  });
+}
+
+// Spell category picker cards ("❤️ From ₹1,666") are static prose text, not
+// a single number, so they can't go through formatPrice() at render time
+// the way other flows' prices do — instead we localize the ₹ amount in
+// place. This has to be re-run every time the spell category screen is
+// shown (not just once when currency detection first resolves), because a
+// visitor can land directly on this screen before that background check
+// finishes — it's the very first screen of the flow, unlike other flows
+// where pricing is only shown a few clicks in, by which point detection has
+// long since completed. Safe to call repeatedly: matching an already-
+// converted price (no ₹ left) is simply a no-op.
+function localizeSpellCategoryPrices() {
+  document.querySelectorAll('#spell-step-category .sc-eyebrow').forEach(function(el){
+    el.textContent = _localizePriceText(el.textContent);
+  });
+}
+
 function openSpellCategory(catKey) {
   const cat = SPELL_CATEGORIES[catKey];
   if (!cat) return;
@@ -1653,7 +1682,7 @@ function openSpellCategory(catKey) {
 
   // Update UI
   document.getElementById('spell-cat-title').textContent = cat.title;
-  document.getElementById('spell-cat-desc').textContent = cat.desc;
+  document.getElementById('spell-cat-desc').textContent = _localizePriceText(cat.desc);
 
   // Build spell option cards
   const grid = document.getElementById('spell-options-grid');
@@ -1662,7 +1691,7 @@ function openSpellCategory(catKey) {
       <div class="check">✓</div>
       <h3 style="font-size:0.85rem;line-height:1.4">${spell.name}</h3>
       ${spell.note ? `<div class="sc-rule"></div><p style="font-size:0.85rem;font-style:italic">${spell.note}</p>` : ''}
-      <div class="sc-tags"><span class="sc-tag">${spell.price}</span></div>
+      <div class="sc-tags"><span class="sc-tag">${_localizePriceText(spell.price)}</span></div>
     </div>
   `).join('');
 
@@ -1681,9 +1710,11 @@ function backToCategories() {
 function selectSpellOption(el, name, price) {
   document.querySelectorAll('#spell-options-grid .service-select-card').forEach(c=>c.classList.remove('selected'));
   el.classList.add('selected');
+  // Keep the ₹ amount in selectedSpell — _extractPriceNumber() (used later to
+  // compute the actual charge) always expects the authored rupee value here.
   selectedSpell = name + ' — ' + price;
   const disp = document.getElementById('spell-selected-display');
-  document.getElementById('spell-selected-name').textContent = name + ' — ' + price;
+  document.getElementById('spell-selected-name').textContent = name + ' — ' + _localizePriceText(price);
   disp.style.display = 'block';
 }
 
