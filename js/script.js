@@ -6835,11 +6835,11 @@ function refreshCouponDisplay(prefix){
   const base = _couponBaseAmount(prefix);
   if (applied) {
     if (discountRow) discountRow.style.display = 'flex';
-    if (discountAmountEl) discountAmountEl.textContent = '\u2212 \u20b9' + applied.discountAmount.toLocaleString('en-IN') + ' (' + applied.code + ')';
-    if (totalEl) totalEl.textContent = '\u20b9' + applied.finalAmount.toLocaleString('en-IN');
+    if (discountAmountEl) discountAmountEl.textContent = '\u2212 ' + formatPrice(applied.discountAmount) + ' (' + applied.code + ')';
+    if (totalEl) totalEl.textContent = formatPrice(applied.finalAmount);
   } else {
     if (discountRow) discountRow.style.display = 'none';
-    if (totalEl) totalEl.textContent = base ? ('\u20b9' + base.toLocaleString('en-IN')) : (totalEl.textContent || '\u2014');
+    if (totalEl) totalEl.textContent = base ? formatPrice(base) : (totalEl.textContent || '\u2014');
   }
 }
 async function applyCoupon(prefix){
@@ -6862,7 +6862,7 @@ async function applyCoupon(prefix){
     const result = await r.json();
     if (!result.valid) throw new Error(result.error || 'Invalid coupon');
     _appliedCoupons[prefix] = { code, discountAmount: result.discountAmount, finalAmount: result.finalAmount };
-    setStatus('✓ Coupon applied — you saved \u20b9' + result.discountAmount.toLocaleString('en-IN') + '.', '#5BB888');
+    setStatus('✓ Coupon applied — you saved ' + formatPrice(result.discountAmount) + '.', '#5BB888');
   } catch (err) {
     _appliedCoupons[prefix] = null;
     setStatus('✗ ' + err.message, '#c0392b');
