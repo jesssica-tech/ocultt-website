@@ -652,10 +652,10 @@ function otFormatOverrideDate(isoDateStr){
   return otFormatMoonDate(d);
 }
 
-window.OT_MOON_EVENTS_READY = fetch(OCULTT_API + '/moon-events')
+window.OT_MOON_EVENTS_READY = fetch(OCULTT_API + '/moon-events', { signal: AbortSignal.timeout(6000) })
   .then(r => r.json())
   .then(data => data.overrides || {})
-  .catch(() => ({})); // any failure → no overrides, calculated dates still work
+  .catch(() => ({})); // any failure (including timeout) → no overrides, calculated dates still work
 
 function otResolveMoonEvent(eventType, phaseFraction){
   return window.OT_MOON_EVENTS_READY.then(function(overrides){
@@ -1639,12 +1639,12 @@ const SPELL_CATEGORIES = {
     ]
   },
   'monthly': {
-    title: 'Monthly Protection Program',
-    desc: 'Choose ongoing monthly energy support. 6-month bookings receive special discounted pricing.',
+    title: '6 Months Bundle',
+    desc: 'A 6-month package of ongoing energy support, at special bundled pricing.',
     spells: [
-      {name:'Monthly Negativity Removal Spell', note:'Monthly support to clear negative energy.', price:'₹8,888/month'},
-      {name:'Monthly Good Luck Spell', note:'Ongoing positive energy and good fortune.', price:'₹8,888/month'},
-      {name:'Monthly Protection Spell', note:'Continuous energetic protection.', price:'₹8,888/month'},
+      {name:'Monthly Negativity Removal Spell', note:'Ongoing support to clear negative energy, for 6 months.', price:'₹8,888 (6 months)'},
+      {name:'Monthly Good Luck Spell', note:'Ongoing positive energy and good fortune, for 6 months.', price:'₹8,888 (6 months)'},
+      {name:'Monthly Protection Spell', note:'Continuous energetic protection, for 6 months.', price:'₹8,888 (6 months)'},
     ]
   },
 };
