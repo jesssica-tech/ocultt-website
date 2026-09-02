@@ -58,7 +58,7 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
   // fallback. Only fail safe to INR if BOTH providers come back empty
   // or fail, not just one. Same trust rule as before applies to each:
   // only a genuine, well-formed 2-letter code counts as "not India".
-  const timeout = setTimeout(function(){ resolve(finish('INR')); }, 7000);
+  const timeout = setTimeout(function(){ resolve(finish(tryTimezoneFallback())); }, 7000);
   function finish(currency){
     clearTimeout(timeout);
     window.OT_CURRENCY = currency;
@@ -68,6 +68,23 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
   function currencyFromCode(code){
     return code && code !== 'IN' ? 'USD' : 'INR';
   }
+  // Last-resort fallback when BOTH IP-lookup providers fail — this covers
+  // visitors whose VPN, ad-blocker, or browser privacy feature silently
+  // blocks those two specific external calls (confirmed case: some VPN
+  // apps' built-in privacy/ad-blocking prevents the request from firing
+  // at all, so it fails the exact same way for every country, not just
+  // one). The device's own timezone needs no network call, so nothing can
+  // block it. India has essentially one timezone (Asia/Kolkata), so
+  // anything else is solid evidence of a non-India visitor. If the
+  // timezone itself is unreadable or is Asia/Kolkata, stay with the safe
+  // INR default rather than guess.
+  function tryTimezoneFallback(){
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz && tz !== 'Asia/Kolkata' && tz !== 'Asia/Calcutta') return 'USD';
+    } catch(e) { /* Intl unsupported — fall through to safe default */ }
+    return 'INR';
+  }
   function tryIpapiFallback(){
     fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) })
       .then(r => r.json())
@@ -75,9 +92,10 @@ window.OT_CURRENCY_READY = new Promise(function(resolve){
         const code = data && typeof data.country_code === 'string' && data.country_code.length === 2
           ? data.country_code : null;
         window.OT_COUNTRY = code;
-        resolve(finish(currencyFromCode(code)));
+        if (code) { resolve(finish(currencyFromCode(code))); }
+        else { resolve(finish(tryTimezoneFallback())); } // both providers gave no usable location
       })
-      .catch(() => resolve(finish('INR'))); // both providers failed → India/INR, never guess
+      .catch(() => resolve(finish(tryTimezoneFallback()))); // both providers failed outright
   }
   fetch('https://get.geojs.io/v1/ip/country.json', { signal: AbortSignal.timeout(3500) })
     .then(r => r.json())
@@ -137,8 +155,15 @@ function localizeVisiblePrices() {
     const parts = opt.value.split('|');
     const rupees = Number(parts[1]);
     if (parts.length === 2 && !isNaN(rupees)) {
-      const label = opt.textContent.replace(/—\s*₹[\d,]+\s*$/, '').trim();
-      opt.textContent = label + ' — ' + formatPrice(rupees);
+      // Cache the untouched original label the first time this runs, so
+      // repeated calls (every screen navigation) always rebuild from the
+      // original text instead of re-parsing an already-converted "— $17"
+      // label — which doesn't match the ₹-only strip pattern below and
+      // was silently appending a duplicate price each time ("$17 — $17").
+      if (!opt.hasAttribute('data-orig-label')) {
+        opt.setAttribute('data-orig-label', opt.textContent.replace(/—\s*₹[\d,]+\s*$/, '').trim());
+      }
+      opt.textContent = opt.getAttribute('data-orig-label') + ' — ' + formatPrice(rupees);
     }
   });
   const gPrice = document.getElementById('g-price');
