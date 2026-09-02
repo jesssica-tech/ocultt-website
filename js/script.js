@@ -114,13 +114,16 @@ function formatPrice(rupees){
   return '₹' + rupees.toLocaleString('en-IN');
 }
 
-// ── Once currency resolves, refresh every price the customer can see
-// before they've started a booking (dropdowns, service cards, currency
-// badges). Anything set later (payment-step totals, success screens)
-// already calls formatPrice() directly at render time — see each
-// render*PaymentView()/finalize*Booking() function. ──
-window.OT_CURRENCY_READY.then(function(currency){
-  if (currency !== 'USD') return; // India stays exactly as authored — nothing to do
+// ── Refreshes every currency-dependent price on screen. Called once when
+// currency detection first resolves, AND again every time a booking screen
+// is shown (see showPage()) — because a visitor can land on any given
+// screen before that background detection finishes; it's not just the
+// first screen of a flow that's at risk. Anything set later (payment-step
+// totals, success screens) already calls formatPrice() directly at render
+// time — see each render*PaymentView()/finalize*Booking() function. Safe
+// to call repeatedly and before currency has resolved. ──
+function localizeVisiblePrices() {
+  if (window.OT_CURRENCY !== 'USD') return; // India stays exactly as authored — nothing to do
 
   document.querySelectorAll('[data-price-rupees]').forEach(function(el){
     const rupees = Number(el.getAttribute('data-price-rupees'));
@@ -145,7 +148,9 @@ window.OT_CURRENCY_READY.then(function(currency){
       if (!isNaN(rupees)) opt.textContent = formatPrice(rupees);
     });
   }
-});
+  if (typeof updateSummaryBar === 'function') updateSummaryBar();
+}
+window.OT_CURRENCY_READY.then(localizeVisiblePrices);
 
 // ── Shared PayPal checkout core — used by all 5 booking flows for
 // visitors detected as international. Mirrors the Razorpay flow's trust
@@ -711,6 +716,7 @@ window.addEventListener('popstate', function(e){
 });
 
 function showPage(id, fromPopstate){
+  if (typeof localizeVisiblePrices === 'function') localizeVisiblePrices();
   // ── CRM PROTECTION — only authenticated admin accounts may enter ──
   if (id === 'admin' && !isAdminUser()) {
     const currentlySignedIn = getCurrentAuthUser();
@@ -1445,8 +1451,8 @@ function updateSummaryBar(){
     else{dEl.textContent='Not selected';dEl.classList.add('empty');}
   }
   if(pEl){
-    const price=selectedPriceOverride || PRICE_MAP[selectedDuration] || null;
-    if(price){pEl.textContent=price;pEl.classList.remove('empty');}
+    const priceLabel=selectedPriceOverride || PRICE_MAP[selectedDuration] || null;
+    if(priceLabel){pEl.textContent=formatPrice(_extractPriceNumber(priceLabel));pEl.classList.remove('empty');}
     else{pEl.textContent='—';pEl.classList.add('empty');}
   }
   const fEl=document.getElementById('summary-format');
