@@ -2328,6 +2328,20 @@ input.field-invalid:focus,select.field-invalid:focus,textarea.field-invalid:focu
     box-sizing: border-box;
     display: block;
   }
+  /* Coupon "Apply" button (Tarot/Spell/Group Magic/Numerology/Energy
+     Healing) sits inline next to the coupon input, not stacked like the
+     hero/CTA buttons above — the width:100%/display:block rule those need
+     was also catching this button (same .btn-secondary class), forcing it
+     to hog the whole row and squeezing the coupon input down to almost
+     nothing. Higher-specificity override, mobile-only, scoped to just this
+     button via its own class — hero/CTA buttons elsewhere are untouched. */
+  .btn-secondary.coupon-apply-btn {
+    width: auto !important;
+    display: inline-block !important;
+    flex-shrink: 0;
+    padding: 0.6rem 1.1rem !important;
+    font-size: 0.68rem !important;
+  }
   .hero-ctas {
     flex-direction: column;
     align-items: stretch;

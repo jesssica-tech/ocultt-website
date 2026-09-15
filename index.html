@@ -974,8 +974,8 @@
           <div class="detail-row" id="pay-urgent-row" style="display:none"><span class="detail-label">Urgent Fee</span><span class="detail-value" id="pay-urgent-fee">—</span></div>
           <div style="margin:0.75rem 0">
             <div style="display:flex;gap:0.5rem">
-              <input type="text" id="t-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
-              <button type="button" class="btn-secondary" onclick="applyCoupon('t')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+              <input type="text" id="t-coupon-input" placeholder="Coupon code" style="flex:1;min-width:0;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+              <button type="button" class="btn-secondary coupon-apply-btn" onclick="applyCoupon('t')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
             </div>
             <p id="t-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
           </div>
@@ -1213,8 +1213,8 @@
         <div class="detail-row" id="spell-pay-urgent-row" style="display:none"><span class="detail-label">Urgent Fee</span><span class="detail-value" id="spell-pay-urgent-fee">—</span></div>
         <div style="margin:0.75rem 0">
           <div style="display:flex;gap:0.5rem">
-            <input type="text" id="spell-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
-            <button type="button" class="btn-secondary" onclick="applyCoupon('spell')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+            <input type="text" id="spell-coupon-input" placeholder="Coupon code" style="flex:1;min-width:0;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary coupon-apply-btn" onclick="applyCoupon('spell')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
           </div>
           <p id="spell-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
         </div>
@@ -1308,8 +1308,8 @@
         <div class="detail-row"><span class="detail-label">Session</span><span class="detail-value" id="group-pay-session">—</span></div>
         <div style="margin:0.75rem 0">
           <div style="display:flex;gap:0.5rem">
-            <input type="text" id="group-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
-            <button type="button" class="btn-secondary" onclick="applyCoupon('group')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+            <input type="text" id="group-coupon-input" placeholder="Coupon code" style="flex:1;min-width:0;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary coupon-apply-btn" onclick="applyCoupon('group')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
           </div>
           <p id="group-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
         </div>
@@ -1424,8 +1424,8 @@
         <div class="detail-row"><span class="detail-label">Report</span><span class="detail-value" id="num-pay-name">—</span></div>
         <div style="margin:0.75rem 0">
           <div style="display:flex;gap:0.5rem">
-            <input type="text" id="num-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
-            <button type="button" class="btn-secondary" onclick="applyCoupon('num')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+            <input type="text" id="num-coupon-input" placeholder="Coupon code" style="flex:1;min-width:0;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary coupon-apply-btn" onclick="applyCoupon('num')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
           </div>
           <p id="num-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
         </div>
@@ -1555,8 +1555,8 @@
         <div class="detail-row"><span class="detail-label">Service</span><span class="detail-value" id="eh-pay-name">—</span></div>
         <div style="margin:0.75rem 0">
           <div style="display:flex;gap:0.5rem">
-            <input type="text" id="eh-coupon-input" placeholder="Coupon code" style="flex:1;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
-            <button type="button" class="btn-secondary" onclick="applyCoupon('eh')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
+            <input type="text" id="eh-coupon-input" placeholder="Coupon code" style="flex:1;min-width:0;text-transform:uppercase;padding:0.5rem;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Montserrat',sans-serif">
+            <button type="button" class="btn-secondary coupon-apply-btn" onclick="applyCoupon('eh')" style="white-space:nowrap;padding:0.5rem 1rem">Apply</button>
           </div>
           <p id="eh-coupon-status" style="margin-top:0.4rem;font-size:0.8rem;font-style:italic"></p>
         </div>
@@ -1712,6 +1712,6 @@
 <!-- ═══ ADMIN DASHBOARD (loaded async — see admin-panel-fragment.html) ═══ -->
 <div id="page-admin" class="page"></div><!-- end page-admin -->
 
-<script src="js/script.js?v=204"></script>
+<script src="js/script.js?v=206"></script>
 </body>
 </html>

@@ -1185,6 +1185,30 @@ function tarotNext(from){
     if(!nm){_showFieldError('t-name','t-name-err');hasError=true;}
     if(!em||!em.includes('@')){_showFieldError('t-email','t-email-err');hasError=true;}
     if(!ph){_showFieldError('t-phone','t-phone-err');hasError=true;}
+    // Audio Tarot Reading: if the customer chose N questions, all N boxes
+    // must actually be filled in before they can continue — otherwise we'd
+    // charge for questions that were never asked. Reuses the same
+    // field-invalid styling + scroll-to-first-error flow as name/email/phone.
+    if(selectedReading && selectedReading.startsWith('Audio') && _audioQCount > 0){
+      let audioHint = document.getElementById('t-audio-q-hint');
+      let anyAudioMissing = false;
+      for(let i=1;i<=_audioQCount;i++){
+        const qEl = document.getElementById('t-audio-q'+i);
+        if(!qEl) continue;
+        if(!qEl.value.trim()){ qEl.classList.add('field-invalid'); anyAudioMissing = true; hasError = true; }
+        else { qEl.classList.remove('field-invalid'); }
+      }
+      const audioWrap = document.getElementById('t-audio-questions-wrap');
+      if(audioWrap){
+        if(!audioHint){
+          audioHint = document.createElement('p');
+          audioHint.id = 't-audio-q-hint';
+          audioHint.style.cssText = 'color:#c0392b;font-size:0.85rem;margin:0.4rem 0 0.8rem';
+          audioWrap.insertBefore(audioHint, audioWrap.firstChild);
+        }
+        audioHint.textContent = anyAudioMissing ? `Please fill in all ${_audioQCount} question${_audioQCount>1?'s':''} before continuing.` : '';
+      }
+    }
     if(hasError){
       // Scroll to first error
       const firstErr=document.querySelector('#tarot-step-3 .field-invalid');
@@ -5120,10 +5144,16 @@ function buildBookingMailtoLink(b){
   return `mailto:${b.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-function openBookingDetail(bookingId) {
+async function openBookingDetail(bookingId) {
   const overlay = document.getElementById('booking-detail-overlay');
   const panel = document.getElementById('booking-detail-panel');
   if (!overlay || !panel) return;
+
+  // Force a fresh pull from the backend before showing anything — payment
+  // status is backend-authoritative (see routes/bookings.js), and this
+  // detail view can be opened directly (e.g. from a notification) without
+  // the Bookings list's own sync having run first.
+  await syncLiveBookingsIntoLocal(true);
 
   const b = OculttDB.getBookings().find(x => x.id === bookingId);
   if (!b) return;
@@ -6021,7 +6051,16 @@ function toggleAdminNotifications(e){
   if (e) e.stopPropagation();
   const panel = document.getElementById('admin-notif-panel');
   if (!panel) return;
+  const opening = !panel.classList.contains('is-open');
   panel.classList.toggle('is-open');
+  if (opening) {
+    // Like a phone's notification centre: opening the list marks everything
+    // currently shown as "seen" — the badge won't count these again, only
+    // genuinely new activity that happens after this point.
+    try { localStorage.setItem('ocultt_admin_notif_last_seen', new Date().toISOString()); } catch(e){}
+    const badgeEl = document.getElementById('admin-notif-badge');
+    if (badgeEl) { badgeEl.textContent = '0'; badgeEl.classList.remove('has-items'); }
+  }
 }
 function closeAdminNotifications(){
   const panel = document.getElementById('admin-notif-panel');
@@ -6087,8 +6126,10 @@ function renderAdminNotifications(){
   } catch(e){}
 
   items.sort((a,b) => new Date(b.at) - new Date(a.at));
-  const urgentCount = items.filter(i => i.urgent).length;
-  const showCount = urgentCount || items.length;
+  let lastSeen = 0;
+  try { lastSeen = new Date(localStorage.getItem('ocultt_admin_notif_last_seen') || 0).getTime(); } catch(e){}
+  const newSinceLastSeen = items.filter(i => i.at && new Date(i.at).getTime() > lastSeen).length;
+  const showCount = newSinceLastSeen;
 
   if (badgeEl) {
     badgeEl.textContent = showCount > 9 ? '9+' : showCount;

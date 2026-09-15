@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const Razorpay = require('razorpay');
 const { supabase } = require('../db');
+const adminAuth = require('../middleware/adminAuth');
 const { sendCustomerBookingConfirmation, sendSpellBookingConfirmation, sendEnergyHealingConfirmation, sendNumerologyConfirmation } = require('../utils/notify');
 const { computeDiscount, normalizeCode } = require('./coupons');
 
@@ -288,6 +289,95 @@ router.post('/payments/verify', async (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// ── POST /api/bookings/:id/reconcile-payment ── admin-only. Catches the
+// rare case where BOTH normal paths miss a real, captured payment — the
+// customer's browser never reached /payments/verify (closed tab, dropped
+// connection) AND the Razorpay webhook didn't record it either (e.g. it
+// fired before RAZORPAY_WEBHOOK_SECRET was configured, so it was rejected
+// and Razorpay's retry window has since expired). Rather than hand-editing
+// the database, this asks Razorpay directly whether the payment really
+// was captured for THIS booking's order, then applies the exact same
+// update /payments/verify and the webhook already apply on success —
+// same fields, same confirmation email, same coupon redemption — so a
+// reconciled booking is indistinguishable from one that succeeded
+// normally. Never trusts a client-sent amount/status, only what Razorpay's
+// own API reports for the order tied to this booking id.
+router.post('/bookings/:id/reconcile-payment', adminAuth, async (req, res) => {
+  if (!razorpayConfigured) return res.status(503).json({ ok: false, error: 'Payments are not configured yet.' });
+  if (!supabase) return res.status(503).json({ ok: false, error: 'Database not configured yet.' });
+
+  const bookingId = req.params.id;
+  const { payment_id } = req.body || {};
+  if (!payment_id || typeof payment_id !== 'string') {
+    return res.status(400).json({ ok: false, error: 'Missing payment_id.' });
+  }
+
+  const { data: booking, error: bookingErr } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+  if (bookingErr) return res.status(500).json({ ok: false, error: bookingErr.message });
+  if (!booking) return res.status(404).json({ ok: false, error: 'Booking not found.' });
+  if (booking.payment_status === 'Paid') {
+    return res.json({ ok: true, alreadyPaid: true, booking });
+  }
+
+  let payment;
+  try {
+    payment = await razorpay.payments.fetch(payment_id);
+  } catch (err) {
+    console.warn('[reconcile-payment] Could not fetch payment %s:', payment_id, err.message);
+    return res.status(502).json({ ok: false, error: 'Could not look up this payment on Razorpay.' });
+  }
+
+  if (!payment || payment.status !== 'captured') {
+    return res.status(400).json({ ok: false, error: `Razorpay reports this payment as "${payment && payment.status}", not captured — refusing to mark Paid.` });
+  }
+
+  // Confirm the payment's order actually belongs to this booking (same
+  // trust check the webhook uses via order notes.bookingId) before
+  // touching anything — an admin could paste the wrong payment_id by
+  // mistake.
+  try {
+    const order = await razorpay.orders.fetch(payment.order_id);
+    if (!order || order.notes?.bookingId !== bookingId) {
+      return res.status(400).json({ ok: false, error: 'This payment does not belong to this booking\u2019s order.' });
+    }
+  } catch (err) {
+    console.warn('[reconcile-payment] Could not fetch order %s:', payment.order_id, err.message);
+    return res.status(502).json({ ok: false, error: 'Could not verify this payment\u2019s order on Razorpay.' });
+  }
+
+  const { data: updated, error } = await supabase.from('bookings').update({
+    payment_status: 'Paid', payment_id: payment.id, updated_at: new Date().toISOString()
+  }).eq('id', bookingId).select().maybeSingle();
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+
+  if (updated) {
+    if (updated.coupon_code && updated.email) {
+      supabase.from('coupon_redemptions').insert({
+        coupon_code: updated.coupon_code, email: updated.email.toLowerCase(), booking_id: updated.id
+      }).then(({ error: redeemErr }) => {
+        if (redeemErr) console.warn('[reconcile-payment] Could not record coupon redemption:', redeemErr.message);
+      });
+    }
+    const service = (updated.service || '').toLowerCase();
+    let priceLabel = null;
+    if (service.includes('spell') || service.includes('energy') || service.includes('numerology')) {
+      priceLabel = '\u20b9' + (payment.amount / 100).toLocaleString('en-IN');
+    }
+    if (service.includes('spell')) {
+      sendSpellBookingConfirmation({ ...updated, priceLabel }).catch(() => {});
+    } else if (service.includes('energy')) {
+      sendEnergyHealingConfirmation({ ...updated, priceLabel }).catch(() => {});
+    } else if (service.includes('numerology')) {
+      sendNumerologyConfirmation({ ...updated, priceLabel }).catch(() => {});
+    } else {
+      sendCustomerBookingConfirmation(updated).catch(() => {});
+    }
+    console.log('[reconcile-payment] Booking %s manually reconciled to Paid by %s', bookingId, req.adminEmail);
+  }
+
+  res.json({ ok: true, booking: updated });
 });
 
 module.exports = router;
