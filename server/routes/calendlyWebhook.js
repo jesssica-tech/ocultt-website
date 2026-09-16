@@ -63,7 +63,7 @@ router.post('/calendly/webhook', express.json({
       if (!email) return;
 
       const { data: match } = await supabase.from('bookings')
-        .select('id').eq('service', 'Tarot Reading').eq('format', 'Google Meet')
+        .select('id, payment_status').eq('service', 'Tarot Reading').eq('format', 'Google Meet')
         .ilike('email', email).neq('meet_status', 'Created')
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (!match) {
@@ -79,12 +79,31 @@ router.post('/calendly/webhook', express.json({
         updated_at: new Date().toISOString()
       }).eq('id', match.id);
 
-      if (meetLink) {
+      // By design, a Phone Tarot customer schedules their Calendly slot
+      // BEFORE paying (the slot is reserved first so it can't double-book,
+      // payment is collected after — see resumePhoneTarotAfterCalendly()
+      // in js/script.js, which is unchanged here). That means this webhook
+      // fires while the booking is still Unpaid in the ordinary case.
+      // Google itself emails the customer a native calendar invite the
+      // moment Calendly creates the event with them as an attendee — that
+      // happens on Calendly/Google's side and isn't something this server
+      // can suppress. What IS ours to control is this second, separate
+      // confirmation email with the actual Meet link: only send it once
+      // the booking is genuinely Paid, so it never reads as "you're
+      // confirmed" before payment has gone through. If payment hasn't
+      // happened yet, the meet_link is still saved on the row above — the
+      // payment-confirmation step (payments.js /verify, the Razorpay
+      // webhook, and the admin reconcile-payment endpoint) picks it up and
+      // sends this same email at that point instead, using the identical
+      // idempotencyKey below, so it's still sent exactly once either way.
+      if (meetLink && match.payment_status === 'Paid') {
         await enqueueEmail({
           templateType: 'meet_link', recipient: email,
           payload: { bookingId: match.id, startTime, meetLink, name },
           idempotencyKey: `meet-link-customer-${match.id}`
         });
+      }
+      if (meetLink) {
         const adminTo = (process.env.ADMIN_NOTIFY_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean)[0];
         if (adminTo) {
           await enqueueEmail({

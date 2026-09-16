@@ -64,7 +64,7 @@
      ───────────────────────────────────────────────────────────────────── */
   var FIREBASE_CONFIG = {
     apiKey:            'AIzaSyCqs3px-ZaSMPtCpkDE3utC1wOxlfc8iF0',
-    authDomain:        'the-ocultt-tarot.firebaseapp.com',
+    authDomain:        'theocultttarot.com',
     projectId:         'the-ocultt-tarot',
     storageBucket:     'the-ocultt-tarot.firebasestorage.app',
     messagingSenderId: '599952695152',
