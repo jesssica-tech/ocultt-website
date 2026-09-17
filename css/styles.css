@@ -2270,9 +2270,9 @@ input.field-invalid:focus,select.field-invalid:focus,textarea.field-invalid:focu
 .nav-signin-link::before{content:'◇';font-size:0.55rem;opacity:0.6}
 
 @media(max-width:768px){
-  .nav-user-pill span.nav-user-name{display:none}
-  .nav-logout{font-size:0;padding:0.45rem 0.55rem}
-  .nav-logout::after{content:'↩';font-size:0.75rem}
+  .nav-kebab-menu .nav-user-pill span.nav-user-name{display:none}
+  .nav-kebab-menu .nav-logout{font-size:0;padding:0.45rem 0.55rem}
+  .nav-kebab-menu .nav-logout::after{content:'↩';font-size:0.75rem}
   .nav-auth{gap:0.4rem}
 }
 

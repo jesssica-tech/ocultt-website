@@ -186,6 +186,11 @@
     <button class="nav-drawer-book-btn" onclick="closeNavDrawer();showPage('tarot-booking')">Book a Session →</button>
     <div style="text-align:center;margin-top:0.9rem">
       <span id="navDrawerSignin" onclick="closeNavDrawer();openGauthModal()" style="font-family:'Gudlak Bold',sans-serif;font-size:0.6rem;letter-spacing:0.2em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;display:inline-flex;align-items:center;gap:0.4rem;transition:color 0.3s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--text-dim)'">◇ Sign In</span>
+      <div class="nav-user-pill" id="navDrawerUserPill" style="display:none;justify-content:center;margin:0 auto 0.7rem">
+        <div class="nav-user-avatar" id="navDrawerUserAvatar"></div>
+        <span class="nav-user-name" id="navDrawerUserName"></span>
+      </div>
+      <button class="nav-logout" id="navDrawerLogoutBtn" style="display:none;width:100%" onclick="closeNavDrawer();gauthSignOut()">Logout</button>
     </div>
   </div>
 </div>
@@ -1712,6 +1717,6 @@
 <!-- ═══ ADMIN DASHBOARD (loaded async — see admin-panel-fragment.html) ═══ -->
 <div id="page-admin" class="page"></div><!-- end page-admin -->
 
-<script src="js/script.js?v=206"></script>
+<script src="js/script.js?v=207"></script>
 </body>
 </html>

@@ -6251,43 +6251,58 @@ function gauthUpdateUI(user) {
   if (user && user.email && typeof OculttDB !== 'undefined' && OculttDB.linkCustomerAccount) {
     try { OculttDB.linkCustomerAccount(user); } catch(e) {}
   }
-  const signinLink = document.getElementById('navSigninLink');
-  const userPill   = document.getElementById('navUserPill');
-  const userName   = document.getElementById('navUserName');
-  const avatarEl   = document.getElementById('navUserAvatar');
-  const logoutBtn  = document.getElementById('navLogoutBtn');
 
-  if (!signinLink || !userPill || !userName || !avatarEl || !logoutBtn) return;
+  // Desktop kebab menu + mobile drawer both show the same signed-in state —
+  // drive them from one shared function instead of duplicating this logic,
+  // so they can never drift out of sync with each other again.
+  function updateAuthUI(signinLink, userPill, userName, avatarEl, logoutBtn) {
+    if (!signinLink || !userPill || !userName || !avatarEl || !logoutBtn) return;
 
-  if (user && (user.name || user.email)) {
-    const parts     = (user.name || user.email || '').trim().split(/\s+/);
-    const firstName = parts[0] || 'Friend';
-    const initials  = parts.slice(0, 2).map(function(w){ return w[0]; }).join('').toUpperCase() || '?';
+    if (user && (user.name || user.email)) {
+      const parts     = (user.name || user.email || '').trim().split(/\s+/);
+      const firstName = parts[0] || 'Friend';
+      const initials  = parts.slice(0, 2).map(function(w){ return w[0]; }).join('').toUpperCase() || '?';
 
-    signinLink.style.display = 'none';
-    userPill.style.display   = 'flex';
-    logoutBtn.style.display  = 'inline-block';
-    userName.textContent     = firstName;
+      signinLink.style.display = 'none';
+      userPill.style.display   = 'flex';
+      logoutBtn.style.display  = 'inline-block';
+      userName.textContent     = firstName;
 
-    // Avatar: photo if available, else initials
-    avatarEl.innerHTML = '';
-    if (user.picture) {
-      var img    = new Image();
-      img.src    = user.picture;
-      img.alt    = initials;
-      img.style.cssText = 'width:24px;height:24px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0';
-      img.onerror = function() { avatarEl.textContent = initials; };
-      avatarEl.appendChild(img);
+      // Avatar: photo if available, else initials
+      avatarEl.innerHTML = '';
+      if (user.picture) {
+        var img    = new Image();
+        img.src    = user.picture;
+        img.alt    = initials;
+        img.style.cssText = 'width:24px;height:24px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0';
+        img.onerror = function() { avatarEl.textContent = initials; };
+        avatarEl.appendChild(img);
+      } else {
+        avatarEl.textContent = initials;
+      }
     } else {
-      avatarEl.textContent = initials;
+      signinLink.style.display = '';
+      userPill.style.display   = 'none';
+      logoutBtn.style.display  = 'none';
+      avatarEl.innerHTML       = '';
+      userName.textContent     = '';
     }
-  } else {
-    signinLink.style.display = '';
-    userPill.style.display   = 'none';
-    logoutBtn.style.display  = 'none';
-    avatarEl.innerHTML       = '';
-    userName.textContent     = '';
   }
+
+  updateAuthUI(
+    document.getElementById('navSigninLink'),
+    document.getElementById('navUserPill'),
+    document.getElementById('navUserName'),
+    document.getElementById('navUserAvatar'),
+    document.getElementById('navLogoutBtn')
+  );
+  updateAuthUI(
+    document.getElementById('navDrawerSignin'),
+    document.getElementById('navDrawerUserPill'),
+    document.getElementById('navDrawerUserName'),
+    document.getElementById('navDrawerUserAvatar'),
+    document.getElementById('navDrawerLogoutBtn')
+  );
 }
 
 // ── REAL GOOGLE CREDENTIAL HANDLER ───────────────────────────────
