@@ -109,6 +109,18 @@
   var _auth     = firebase.auth();
   var _provider = new firebase.auth.GoogleAuthProvider();
 
+  // Explicit LOCAL persistence (survives tab close, needed so the auth
+  // state set up before a mobile signInWithRedirect() is still there once
+  // the browser navigates back from Google). Firebase defaults to this
+  // already, but setting it explicitly removes any doubt and fails safe
+  // (falls back to Firebase's default if the browser rejects it, e.g.
+  // Safari private browsing) rather than throwing.
+  try {
+    _auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (e) {
+    console.warn('[OculttFirebase] setPersistence failed (non-fatal):', e);
+  }
+
   // Request profile and email scopes (included by default; listed for clarity)
   _provider.addScope('profile');
   _provider.addScope('email');
