@@ -236,6 +236,11 @@
        ──────────────────────────────────────────────────────────────── */
     signInWithGoogle: function () {
       if (_isMobileBrowser()) {
+        // TEMP DIAGNOSTIC (safe to remove once mobile sign-in is confirmed
+        // working) — marks that a redirect is in flight so the return trip
+        // can show what actually happened, visibly on-screen, since phone
+        // testers usually can't attach devtools.
+        try { sessionStorage.setItem('ocultt_redirect_pending', '1'); } catch (e) {}
         return _auth.signInWithRedirect(_provider);
         // Tab navigates to accounts.google.com now — nothing after this
         // point runs until the redirect back, handled by

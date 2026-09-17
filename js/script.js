@@ -6528,11 +6528,23 @@ function gauthInit() {
     // and surface redirect-specific errors (e.g. an account conflict)
     // that onAuthStateChanged alone would never report — those otherwise
     // fail silently and just look like "still signed out".
-    window.OculttFirebase.handleRedirectResult().catch(function (err) {
+    var _wasRedirectPending = false;
+    try { _wasRedirectPending = sessionStorage.getItem('ocultt_redirect_pending') === '1'; } catch (e) {}
+    if (_wasRedirectPending) { try { sessionStorage.removeItem('ocultt_redirect_pending'); } catch (e) {} }
+
+    window.OculttFirebase.handleRedirectResult().then(function (user) {
+      // TEMP DIAGNOSTIC (safe to remove once mobile sign-in is confirmed
+      // working) — only fires on the actual return trip from Google, so it
+      // never bothers anyone on a normal page load. Shows on-screen (not
+      // just console) since phone testers usually can't see devtools.
+      if (_wasRedirectPending && typeof showToast === 'function') {
+        showToast(user ? 'Sign-in diagnostic: redirect returned a user \u2713' : 'Sign-in diagnostic: redirect returned NO user (Firebase saw the return trip but no session came back \u2014 check the 8 self-hosted auth files are live at /__/auth/ and /__/firebase/init.json)', 12000);
+      }
+    }).catch(function (err) {
       _pendingAdminEntry = false;
       try { sessionStorage.removeItem('ocultt_pending_admin_entry'); } catch(e) {}
       console.error('[OculttAuth] Redirect sign-in failed:', err.code, err.message);
-      if (typeof showToast === 'function') showToast('Sign-in failed — please try again.');
+      if (typeof showToast === 'function') showToast(_wasRedirectPending ? ('Sign-in diagnostic: redirect FAILED \u2014 ' + (err.code || 'unknown') + ': ' + (err.message || '')) : 'Sign-in failed — please try again.', 12000);
     });
 
     // Pre-render the Firebase button inside the modal so it is ready
