@@ -105,7 +105,12 @@ async function resolveEventTypeUri(schedulingUrl) {
 async function fetchAvailableSlots(eventTypeUri) {
   const headers = calendlyHeaders();
   if (!headers) throw new Error('CALENDLY_API_TOKEN not configured.');
-  const start = new Date();
+  // Calendly rejects a start_time that isn't safely in the future — by the
+  // time a literal "now" timestamp reaches Calendly's server, that exact
+  // instant has already ticked into the past, so every request was being
+  // rejected with "start_time must be in the future". A small buffer fixes
+  // this for good, not just this one moment.
+  const start = new Date(Date.now() + 5 * 60 * 1000);
   const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
   const url = `${CALENDLY_API}/event_type_available_times?event_type=${encodeURIComponent(eventTypeUri)}&start_time=${encodeURIComponent(start.toISOString())}&end_time=${encodeURIComponent(end.toISOString())}`;
   const resp = await fetch(url, { headers });
