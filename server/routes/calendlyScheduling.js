@@ -110,7 +110,14 @@ async function fetchAvailableSlots(eventTypeUri) {
   const url = `${CALENDLY_API}/event_type_available_times?event_type=${encodeURIComponent(eventTypeUri)}&start_time=${encodeURIComponent(start.toISOString())}&end_time=${encodeURIComponent(end.toISOString())}`;
   const resp = await fetch(url, { headers });
   const data = await resp.json();
-  if (!resp.ok) throw new Error('Could not fetch Calendly availability: ' + (data.message || resp.status));
+  if (!resp.ok) {
+    // Calendly's `details` array names the exact parameter and reason —
+    // the headline message alone ("The supplied parameters are invalid")
+    // doesn't say which one. Logging it in full so the real cause shows
+    // up in Render's logs instead of us guessing between candidates.
+    console.error('[calendly available-times] Calendly rejected the request:', JSON.stringify({ status: resp.status, message: data.message, details: data.details, requestedEventType: eventTypeUri, requestedRange: url }));
+    throw new Error('Could not fetch Calendly availability: ' + (data.message || resp.status));
+  }
   return (data.collection || [])
     .filter(s => s.status === 'available')
     .map(s => s.start_time);
