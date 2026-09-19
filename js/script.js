@@ -214,7 +214,9 @@ function initiatePayPalCheckout(config){
       bookingId: config.bookingId, type: config.type, duration: config.duration,
       basePrice: config.basePrice, urgency: config.urgency,
       name: config.name, email: config.email, phone: config.phone,
-      couponCode: config.couponCode
+      couponCode: config.couponCode,
+      calendlyEventTypeUri: config.calendlyEventTypeUri || null,
+      calendlySelectedStart: config.calendlySelectedStart || null
     })
   })
   .then(r => r.json())
@@ -1150,7 +1152,13 @@ const PHONE_TAROT_RETURN_PARAM = 'phoneTarotBooked';
 const PHONE_TAROT_DRAFT_KEY = 'oc_phone_tarot_draft';
 
 function savePhoneTarotDraft(draft){
-  try { localStorage.setItem(PHONE_TAROT_DRAFT_KEY, JSON.stringify(draft)); } catch(e){}
+  // Merges onto the existing draft rather than overwriting — callers (e.g.
+  // selectPhoneTarotSlot) may save just the fields they own without
+  // wiping out what an earlier step already saved (name/email/phone/etc).
+  try {
+    const existing = loadPhoneTarotDraft() || {};
+    localStorage.setItem(PHONE_TAROT_DRAFT_KEY, JSON.stringify(Object.assign({}, existing, draft)));
+  } catch(e){}
 }
 function loadPhoneTarotDraft(){
   try {
@@ -1216,16 +1224,16 @@ function tarotNext(from){
       return;
     }
     // Phone Tarot Reading → Personal Details are already collected above.
-    // Save them, then show the matching Calendly event inline on this same
-    // page (see showCalendlyStepForPhone) so the customer never leaves the
-    // site. If the Calendly embed script hasn't loaded for any reason, fall
-    // back to a full-page redirect + resume via resumePhoneTarotAfterCalendly().
-    // Every other reading format/service continues straight to Payment below,
-    // exactly as before.
+    // Save them, then show a custom slot picker inline on this same page
+    // (see showCalendlyStepForPhone) backed by our own server, which only
+    // reads real Calendly availability — it never creates the actual
+    // Calendly appointment. That only happens after payment succeeds (see
+    // server/routes/calendlyScheduling.js). Every other reading
+    // format/service continues straight to Payment below, exactly as
+    // before.
     if(selectedReading && selectedReading.startsWith('Phone')){
       const mins = (selectedDuration||'').split(' ')[0];
-      const calendlyUrl = PHONE_TAROT_CALENDLY_LINKS[mins];
-      if(!calendlyUrl){
+      if(!PHONE_TAROT_CALENDLY_LINKS[mins]){
         _showBanner('step1-error','Please select a valid call duration to continue');
         tarotStep=1; renderTarotStep();
         return;
@@ -1236,13 +1244,7 @@ function tarotNext(from){
         dob: (document.getElementById('t-dob')?.value||'').trim(),
         intent: (document.getElementById('t-intent')?.value||'').trim()
       });
-      if(window.Calendly && typeof window.Calendly.initInlineWidget==='function'){
-        showCalendlyStepForPhone(calendlyUrl, nm, em);
-      } else {
-        // Fallback: embed script not ready — redirect out and resume on return.
-        const sep = calendlyUrl.includes('?') ? '&' : '?';
-        window.location.href = calendlyUrl + sep + 'name=' + encodeURIComponent(nm) + '&email=' + encodeURIComponent(em);
-      }
+      showCalendlyStepForPhone(mins, nm, em);
       return;
     }
   }
@@ -1270,14 +1272,18 @@ function tarotBack(from){
   renderTarotStep();
 }
 
-// ── Phone Tarot: inline Calendly embed within Step 3 ──
-// Keeps the customer on our own site the whole time. When Calendly reports
-// the booking is scheduled, we show a confirmation and move on to Payment
-// automatically after a short delay, with a manual button as a fallback.
+// ── Phone Tarot: custom slot picker within Step 3 ──
+// Reads real Calendly availability from our own server (server/routes/
+// calendlyScheduling.js) and lets the customer pick a date + time — but
+// this NEVER creates a real Calendly appointment and NEVER sends Calendly's
+// invitation. That only happens after payment succeeds. Keeps the customer
+// on our own site the whole time, same as the old widget did, just without
+// actually booking anything yet.
 let _phoneCalendlyHandled = false;
-let _phoneCalendlyAutoTimer = null;
+let _phoneSlotSelectedIso = null;
+let _phoneSlotEventTypeUri = null;
 
-function showCalendlyStepForPhone(calendlyUrl, nm, em){
+function showCalendlyStepForPhone(mins, nm, em){
   const detailsView = document.getElementById('t-details-view');
   const calendlyView = document.getElementById('t-calendly-view');
   const widgetEl = document.getElementById('calendlyInlineWidget');
@@ -1287,24 +1293,124 @@ function showCalendlyStepForPhone(calendlyUrl, nm, em){
   if(calendlyView) calendlyView.style.display='block';
   if(statusEl) statusEl.style.display='none';
   _phoneCalendlyHandled = false;
+  _phoneSlotSelectedIso = null;
+  _phoneSlotEventTypeUri = null;
   // Enforce the intended flow: "Continue to Payment" stays disabled until
-  // Calendly actually confirms a real slot was booked (see
-  // onPhoneTarotCalendlyScheduled below) — a customer can no longer reach
-  // Payment merely by opening this step. Reset on every entry (including
-  // re-entering after Back) so a previous booking's enabled state never
-  // carries over to a fresh visit to this step.
-  if(continueBtn){ continueBtn.disabled = true; continueBtn.style.opacity = '0.4'; continueBtn.style.cursor = 'not-allowed'; continueBtn.title = 'Please select a call time in the calendar above first'; }
-  if(_phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
+  // the customer actually picks a real available time below — reset on
+  // every entry (including re-entering after Back) so a previous
+  // selection never carries over to a fresh visit to this step.
+  if(continueBtn){ continueBtn.disabled = true; continueBtn.style.opacity = '0.4'; continueBtn.style.cursor = 'not-allowed'; continueBtn.title = 'Please select a call time above first'; continueBtn.style.display='inline-block'; }
   if(widgetEl){
     widgetEl.style.display='block';
-    widgetEl.innerHTML='';
-    const sep = calendlyUrl.includes('?') ? '&' : '?';
-    window.Calendly.initInlineWidget({
-      url: calendlyUrl + sep + 'hide_gdpr_banner=1',
-      parentElement: widgetEl,
-      prefill: { name: nm, email: em }
-    });
+    widgetEl.innerHTML = '<p style="text-align:center;font-family:\'Montserrat\',sans-serif;color:var(--text-muted);font-style:italic;padding:2rem 0">Loading available times\u2026</p>';
+    fetch(OCULTT_API + '/calendly/available-times?duration=' + encodeURIComponent(mins))
+      .then(r => r.json())
+      .then(data => {
+        if(!data || !data.ok) throw new Error((data && data.error) || 'Could not load available times.');
+        renderPhoneSlotPicker(widgetEl, data.eventTypeUri, data.slots || []);
+      })
+      .catch(err => {
+        widgetEl.innerHTML = '<div style="text-align:center;padding:2rem 1rem">'
+          + '<p style="font-family:\'Montserrat\',sans-serif;color:#c0392b;margin-bottom:1rem">Could not load available call times right now. Please try again.</p>'
+          + '<button type="button" class="btn-secondary" onclick="showCalendlyStepForPhone(\'' + mins + '\',' + JSON.stringify(nm) + ',' + JSON.stringify(em) + ')">Retry</button>'
+          + '</div>';
+      });
   }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// Groups the raw UTC slot list by the customer's own local date, renders a
+// row of date buttons and, under the selected date, a grid of time buttons
+// (shown in the customer's local time — Calendly's widget did the same).
+function renderPhoneSlotPicker(container, eventTypeUri, isoSlots){
+  if(!isoSlots.length){
+    container.innerHTML = '<p style="text-align:center;font-family:\'Montserrat\',sans-serif;color:var(--text-muted);font-style:italic;padding:2rem 0">No available times in the next 7 days. Please check back soon or contact us directly.</p>';
+    return;
+  }
+  const byDate = {};
+  isoSlots.forEach(iso => {
+    const d = new Date(iso);
+    const key = d.toLocaleDateString(undefined, { year:'numeric', month:'2-digit', day:'2-digit' });
+    (byDate[key] = byDate[key] || []).push({ iso, date: d });
+  });
+  const dateKeys = Object.keys(byDate).sort((a,b) => byDate[a][0].date - byDate[b][0].date);
+
+  let activeDateKey = dateKeys[0];
+
+  function renderTimes(){
+    const times = byDate[activeDateKey].sort((a,b) => a.date - b.date);
+    const timesHtml = times.map(t => {
+      const label = t.date.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+      const selected = _phoneSlotSelectedIso === t.iso;
+      return '<button type="button" class="time-slot' + (selected ? ' selected' : '') + '" style="margin:0.3rem" onclick="selectPhoneTarotSlot(' + JSON.stringify(t.iso) + ',' + JSON.stringify(eventTypeUri) + ')">' + label + '</button>';
+    }).join('');
+    const timesEl = container.querySelector('#phoneSlotTimes');
+    if(timesEl) timesEl.innerHTML = timesHtml;
+  }
+
+  const datesHtml = dateKeys.map(key => {
+    const label = byDate[key][0].date.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+    return '<button type="button" class="btn-secondary phone-slot-date-btn" data-datekey="' + key.replace(/"/g,'&quot;') + '" style="margin:0.25rem;white-space:nowrap" onclick="_selectPhoneSlotDate(this)">' + label + '</button>';
+  }).join('');
+
+  container.innerHTML = '<div style="display:flex;flex-wrap:wrap;justify-content:center;margin-bottom:1rem" id="phoneSlotDates">' + datesHtml + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:0.3rem" id="phoneSlotTimes"></div>';
+
+  window._phoneSlotByDate = byDate;
+  window._phoneSlotActiveDate = activeDateKey;
+  window._phoneSlotRenderTimes = renderTimes;
+  renderTimes();
+  // Mark first date button active
+  const firstBtn = container.querySelector('.phone-slot-date-btn');
+  if(firstBtn) firstBtn.style.background = 'var(--gold)';
+}
+
+function _selectPhoneSlotDate(btn){
+  const container = document.getElementById('calendlyInlineWidget');
+  if(!container) return;
+  container.querySelectorAll('.phone-slot-date-btn').forEach(b => b.style.background='');
+  btn.style.background = 'var(--gold)';
+  window._phoneSlotActiveDate = btn.getAttribute('data-datekey');
+  const byDate = window._phoneSlotByDate;
+  const times = (byDate[window._phoneSlotActiveDate]||[]).sort((a,b)=>a.date-b.date);
+  const eventTypeUri = _phoneSlotEventTypeUri || (times[0] && window._phoneSlotEventTypeUri);
+  const timesHtml = times.map(t => {
+    const label = t.date.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+    return '<button type="button" class="time-slot" style="margin:0.3rem" onclick="selectPhoneTarotSlot(' + JSON.stringify(t.iso) + ',' + JSON.stringify(eventTypeUri) + ')">' + label + '</button>';
+  }).join('');
+  const timesEl = document.getElementById('phoneSlotTimes');
+  if(timesEl) timesEl.innerHTML = timesHtml;
+}
+
+// Customer picked a real available time — this only RESERVES it for
+// checkout (saved into the booking draft), it does NOT create a Calendly
+// appointment and does NOT notify Calendly in any way. The actual booking
+// is created server-side, only after payment succeeds.
+function selectPhoneTarotSlot(iso, eventTypeUri){
+  _phoneSlotSelectedIso = iso;
+  _phoneSlotEventTypeUri = eventTypeUri;
+  savePhoneTarotDraft({ calendlyEventTypeUri: eventTypeUri, calendlySelectedStart: iso });
+  document.querySelectorAll('#calendlyInlineWidget .time-slot').forEach(b => b.classList.remove('selected'));
+  if(window.event && window.event.target) window.event.target.classList.add('selected');
+  onPhoneTarotSlotReserved(iso);
+}
+
+// Shows the "reserved, not booked yet" confirmation and enables Continue.
+// Deliberately does NOT say the call is "booked" — Calendly hasn't created
+// anything yet at this point, only after payment.
+function onPhoneTarotSlotReserved(iso){
+  if(_phoneCalendlyHandled) return;
+  _phoneCalendlyHandled = true;
+  const widgetEl = document.getElementById('calendlyInlineWidget');
+  const statusEl = document.getElementById('calendlyReturnStatus');
+  const continueBtn = document.getElementById('calendlyContinueBtn');
+  if(statusEl){
+    const label = new Date(iso).toLocaleString(undefined, { weekday:'long', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    statusEl.innerHTML = '<div style="font-family:\'Gudlak Bold\',sans-serif;font-size:0.85rem;letter-spacing:0.08em;color:var(--gold);margin-bottom:0.6rem">\u2713 Time selected \u2014 reserved for checkout</div>'
+      + '<p style="font-family:\'Montserrat\',sans-serif;font-size:0.95rem;color:var(--text-muted);font-style:italic">' + label + '. This is reserved for you during checkout \u2014 it will be confirmed on the calendar once payment is complete.</p>';
+    statusEl.style.display='block';
+  }
+  if(continueBtn){ continueBtn.disabled = false; continueBtn.style.opacity = '1'; continueBtn.style.cursor = 'pointer'; continueBtn.title = ''; }
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
@@ -1313,47 +1419,17 @@ function backToDetailsFromCalendly(){
   const calendlyView = document.getElementById('t-calendly-view');
   if(calendlyView) calendlyView.style.display='none';
   if(detailsView) detailsView.style.display='block';
-  if(_phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
-// Fires once Calendly confirms the invitee scheduled an event inside our
-// inline widget. Shows the confirmation panel, then auto-advances to
-// Payment after ~2.5s — the "Continue to Payment" button stays available
-// the whole time as a fallback if the auto-advance doesn't fire.
-function onPhoneTarotCalendlyScheduled(){
-  if(_phoneCalendlyHandled) return;
-  _phoneCalendlyHandled = true;
-  const widgetEl = document.getElementById('calendlyInlineWidget');
-  const statusEl = document.getElementById('calendlyReturnStatus');
-  const continueBtn = document.getElementById('calendlyContinueBtn');
-  if(widgetEl) widgetEl.style.display='none';
-  if(statusEl) statusEl.style.display='block';
-  // Only now — a real 'calendly.event_scheduled' message from Calendly's
-  // own iframe — is a genuine booking confirmed, so only now does Continue
-  // to Payment become usable.
-  if(continueBtn){ continueBtn.disabled = false; continueBtn.style.opacity = '1'; continueBtn.style.cursor = 'pointer'; continueBtn.title = ''; continueBtn.style.display='inline-block'; }
-  _phoneCalendlyAutoTimer = setTimeout(proceedFromCalendlyToPayment, 2500);
-}
-
 function proceedFromCalendlyToPayment(){
-  // Defensive re-check (belt-and-braces alongside the disabled button
-  // above): never advance to Payment for a Phone Tarot booking without a
-  // real Calendly 'calendly.event_scheduled' confirmation having fired.
-  if(!_phoneCalendlyHandled) return;
-  if(_phoneCalendlyAutoTimer){ clearTimeout(_phoneCalendlyAutoTimer); _phoneCalendlyAutoTimer=null; }
+  // Defensive re-check: never advance to Payment for a Phone Tarot booking
+  // without a real available slot having been picked above.
+  if(!_phoneCalendlyHandled || !_phoneSlotSelectedIso) return;
   tarotStep = 4;
   renderTarotStep();
 }
 
-// Calendly's inline widget posts window messages as the customer progresses;
-// 'calendly.event_scheduled' fires once their slot is actually booked.
-window.addEventListener('message', function(e){
-  if(!e.origin || e.origin.indexOf('calendly.com')===-1) return;
-  if(!e.data || typeof e.data!=='object' || typeof e.data.event!=='string') return;
-  if(e.data.event.indexOf('calendly.')!==0) return;
-  if(e.data.event==='calendly.event_scheduled') onPhoneTarotCalendlyScheduled();
-});
 
 // ── Resume a Phone Tarot booking after the customer returns from Calendly ──
 // Calendly's "redirect after booking" setting (configured per event type in
@@ -7081,11 +7157,14 @@ function payForTarotBooking(){
     }
     const priceKey = isAudioReading ? selectedReading : selectedDuration;
     const bookingId = 'OT-' + Math.floor(100000 + Math.random() * 900000);
+    const isPhoneReading = selectedReading && selectedReading.startsWith('Phone');
     initiatePayPalCheckout({
       bookingId, type: 'booking', duration: priceKey,
       urgency: isAudioReading ? selectedTarotUrgency : null,
       name, email, phone,
       couponCode: _appliedCoupons.t ? _appliedCoupons.t.code : null,
+      calendlyEventTypeUri:  isPhoneReading ? _phoneSlotEventTypeUri : null,
+      calendlySelectedStart: isPhoneReading ? _phoneSlotSelectedIso : null,
       payBtnId: 'rzp-pay-btn', containerId: 'rzp-paypal-container',
       statusSetter: rzpSetStatus,
       onApproved: function(paypalOrderId){
@@ -7144,10 +7223,21 @@ function initiateRazorpay() {
   // ("Audio — 2 Questions") as the price-lookup key in that case, matching
   // the new Audio entries in TAROT_PRICE_PAISE server-side.
   const priceKey = isAudioReading ? selectedReading : selectedDuration;
+  const isPhoneReading = selectedReading && selectedReading.startsWith('Phone');
   fetch(OCULTT_API + '/payments/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId, duration: priceKey, type: 'booking', name, email, phone, urgency: (isAudioReading ? selectedTarotUrgency : null), couponCode: _appliedCoupons.t ? _appliedCoupons.t.code : null })
+    body: JSON.stringify({
+      bookingId, duration: priceKey, type: 'booking', name, email, phone,
+      urgency: (isAudioReading ? selectedTarotUrgency : null),
+      couponCode: _appliedCoupons.t ? _appliedCoupons.t.code : null,
+      // Phone Tarot only — the slot picked in Step 3 (see
+      // selectPhoneTarotSlot). Nothing is booked on Calendly from this;
+      // it's just saved so the real appointment can be created after
+      // payment succeeds.
+      calendlyEventTypeUri:  isPhoneReading ? _phoneSlotEventTypeUri : null,
+      calendlySelectedStart: isPhoneReading ? _phoneSlotSelectedIso : null
+    })
   })
   .then(r => r.json())
   .then(order => {

@@ -942,23 +942,23 @@
         </div>
       </div>
 
-      <!-- Phone Tarot Reading only: Calendly is embedded here, right after
-           Details, so the customer never leaves the site. Once Calendly
-           reports the booking is scheduled, this view shows a confirmation
-           and hands off to Payment automatically. -->
+      <!-- Phone Tarot Reading only: a custom slot picker (backed by our own
+           server reading real Calendly availability — see
+           server/routes/calendlyScheduling.js) is shown here, right after
+           Details, so the customer never leaves the site. Picking a time
+           only RESERVES it for checkout — nothing is booked with Calendly
+           yet. The real Calendly appointment is only created after payment
+           succeeds. -->
       <div id="t-calendly-view" style="display:none">
         <div class="form-card">
           <h2>Choose Your Call Time</h2>
-          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-muted);font-style:italic;margin-bottom:1rem">Select an available slot below to schedule your Phone Tarot call.</p>
-          <div id="calendlyInlineWidget" style="min-width:280px;height:650px"></div>
-          <div id="calendlyReturnStatus" style="display:none;text-align:center;padding:2rem 1rem">
-            <div style="font-family:'Gudlak Bold',sans-serif;font-size:0.85rem;letter-spacing:0.08em;color:var(--gold);margin-bottom:0.6rem">✓ Your call is booked!</div>
-            <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-muted);font-style:italic">Taking you to payment…</p>
-          </div>
+          <p style="font-family:'Montserrat',sans-serif;font-size:0.95rem;color:var(--text-muted);font-style:italic;margin-bottom:1rem">Select an available slot below — it will be reserved for you at checkout and confirmed once payment is complete.</p>
+          <div id="calendlyInlineWidget" style="min-width:280px"></div>
+          <div id="calendlyReturnStatus" style="display:none;text-align:center;padding:2rem 1rem"></div>
         </div>
         <div class="form-nav">
           <button class="btn-secondary" onclick="backToDetailsFromCalendly()">← Back</button>
-          <button class="btn-primary" id="calendlyContinueBtn" onclick="proceedFromCalendlyToPayment()" disabled style="opacity:0.4;cursor:not-allowed" title="Please select a call time in the calendar above first">Continue to Payment →</button>
+          <button class="btn-primary" id="calendlyContinueBtn" onclick="proceedFromCalendlyToPayment()" disabled style="opacity:0.4;cursor:not-allowed" title="Please select a call time above first">Continue to Payment →</button>
         </div>
       </div>
     </div>

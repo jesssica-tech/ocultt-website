@@ -2339,8 +2339,18 @@ input.field-invalid:focus,select.field-invalid:focus,textarea.field-invalid:focu
     width: auto !important;
     display: inline-block !important;
     flex-shrink: 0;
-    padding: 0.6rem 1.1rem !important;
+    padding: 0.7rem 1.2rem !important;
     font-size: 0.68rem !important;
+  }
+  /* Guarantees the coupon input itself never looks cramped, regardless of
+     row width — a real minimum size, not just "whatever's left after the
+     button". Pairs with the min-width:0 already on the input inline style
+     (that one lets it shrink on ultra-narrow phones without overflowing;
+     this one stops it looking tiny on normal phones). */
+  input[id$="-coupon-input"] {
+    flex-basis: 60%;
+    padding: 0.75rem 0.9rem !important;
+    font-size: 0.85rem !important;
   }
   .hero-ctas {
     flex-direction: column;

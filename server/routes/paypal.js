@@ -104,7 +104,7 @@ function computeAmountRupees(body) {
 router.post('/paypal/create-order', orderLimiter, async (req, res) => {
   if (!paypalConfigured) return res.status(503).json({ error: 'International payments are not configured yet.' });
 
-  const { bookingId, type, name, email, phone, duration, urgency } = req.body || {};
+  const { bookingId, type, name, email, phone, duration, urgency, calendlyEventTypeUri, calendlySelectedStart } = req.body || {};
   if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'Missing bookingId.' });
 
   const priced = computeAmountRupees(req.body || {});
@@ -164,13 +164,19 @@ router.post('/paypal/create-order', orderLimiter, async (req, res) => {
         : type === 'energy_healing' ? 'Energy Healing'
         : type === 'numerology' ? 'Numerology'
         : 'Group Magic';
-      supabase.from('bookings').upsert({
+      const row = {
         id: bookingId, service: serviceLabel, duration: duration || null,
         name, email, phone: phone || null,
         payment_status: 'Unpaid', status: 'Booking Received',
         payment_provider: 'paypal', currency: 'USD',
         coupon_code: couponCode, discount_amount: couponCode ? discountAmountRupees : null
-      }, { onConflict: 'id' }).then(({ error }) => {
+      };
+      if (type === 'booking' && calendlyEventTypeUri && calendlySelectedStart) {
+        row.calendly_event_type_uri = String(calendlyEventTypeUri);
+        row.calendly_selected_start = String(calendlySelectedStart);
+        row.calendly_booking_status = 'pending';
+      }
+      supabase.from('bookings').upsert(row, { onConflict: 'id' }).then(({ error }) => {
         if (error) console.warn('[paypal create-order] Could not create placeholder booking row:', error.message);
       });
     }
@@ -219,6 +225,9 @@ router.post('/paypal/capture-order', async (req, res) => {
       if (error) {
         console.warn('[paypal capture-order] Could not sync payment status to bookings row:', error.message);
       } else if (updated) {
+        if (updated.calendly_event_type_uri) {
+          createCalendlyBookingForPaidBooking(updated.id).catch(e => console.error('[paypal capture-order] Calendly booking creation failed:', e.message));
+        }
         if (updated.coupon_code && updated.email) {
           supabase.from('coupon_redemptions').insert({
             coupon_code: updated.coupon_code, email: updated.email.toLowerCase(), booking_id: updated.id

@@ -23,6 +23,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { supabase } = require('../db');
 const { sendAdminNewBookingNotification, sendCustomerBookingConfirmation } = require('../utils/notify');
+const { createCalendlyBookingForPaidBooking } = require('./calendlyScheduling');
 
 const router = express.Router();
 
@@ -89,7 +90,12 @@ router.post('/razorpay/webhook', express.json({
           console.warn('[razorpay webhook] Could not record payment.captured for booking %s:', bookingId, error.message);
         } else {
           console.log('[razorpay webhook] Recorded payment.captured for booking %s (frontend verify may not have fired)', bookingId);
-          if (updated) sendCustomerBookingConfirmation(updated).catch(() => {});
+          if (updated) {
+            if (updated.calendly_event_type_uri) {
+              createCalendlyBookingForPaidBooking(updated.id).catch(e => console.error('[razorpay webhook] Calendly booking creation failed:', e.message));
+            }
+            sendCustomerBookingConfirmation(updated).catch(() => {});
+          }
         }
       }
     }

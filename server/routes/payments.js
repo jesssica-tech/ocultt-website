@@ -6,6 +6,7 @@ const { supabase } = require('../db');
 const adminAuth = require('../middleware/adminAuth');
 const { sendCustomerBookingConfirmation, sendSpellBookingConfirmation, sendEnergyHealingConfirmation, sendNumerologyConfirmation } = require('../utils/notify');
 const { computeDiscount, normalizeCode } = require('./coupons');
+const { createCalendlyBookingForPaidBooking } = require('./calendlyScheduling');
 
 const router = express.Router();
 
@@ -86,7 +87,7 @@ const _recentOrders = new Map();
 router.post('/payments/create-order', orderLimiter, async (req, res) => {
   if (!razorpayConfigured) return res.status(503).json({ error: 'Payments are not configured yet.' });
 
-  const { bookingId, duration, type, name, email, phone, basePrice, urgency } = req.body || {};
+  const { bookingId, duration, type, name, email, phone, basePrice, urgency, calendlyEventTypeUri, calendlySelectedStart } = req.body || {};
   if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'Missing bookingId.' });
   if (type !== 'booking' && type !== 'spell' && type !== 'energy_healing' && type !== 'numerology' && type !== 'group_magic') {
     return res.status(400).json({ error: 'Unsupported payment type.' });
@@ -193,12 +194,23 @@ router.post('/payments/create-order', orderLimiter, async (req, res) => {
         : type === 'energy_healing' ? 'Energy Healing'
         : type === 'numerology' ? 'Numerology'
         : 'Group Magic';
-      supabase.from('bookings').upsert({
+      const row = {
         id: bookingId, service: serviceLabel, duration: duration || null,
         name, email, phone: phone || null,
         payment_status: 'Unpaid', status: 'Booking Received',
         coupon_code: couponCode, discount_amount: couponCode ? discountAmountRupees : null
-      }, { onConflict: 'id' }).then(({ error }) => {
+      };
+      // Phone Tarot's new slot-picker (see calendlyScheduling.js) saves the
+      // customer's chosen time here, at order-creation — this is the
+      // earliest point a real DB row for this booking exists. Nothing is
+      // booked on Calendly yet; this only records what they picked so it
+      // can be turned into a real appointment after payment succeeds.
+      if (type === 'booking' && calendlyEventTypeUri && calendlySelectedStart) {
+        row.calendly_event_type_uri = String(calendlyEventTypeUri);
+        row.calendly_selected_start = String(calendlySelectedStart);
+        row.calendly_booking_status = 'pending';
+      }
+      supabase.from('bookings').upsert(row, { onConflict: 'id' }).then(({ error }) => {
         if (error) console.warn('[payments create-order] Could not create placeholder booking row:', error.message);
       });
     }
@@ -241,6 +253,13 @@ router.post('/payments/verify', async (req, res) => {
     if (error) {
       console.warn('[payments verify] Could not sync payment status to bookings row:', error.message);
     } else if (updated) {
+      // Phone Tarot's new flow: the real Calendly appointment does not
+      // exist yet at this point — only create it now that payment is
+      // genuinely verified. No-ops for every other booking type/the old
+      // flow (calendly_event_type_uri simply won't be set on those rows).
+      if (updated.calendly_event_type_uri) {
+        createCalendlyBookingForPaidBooking(updated.id).catch(e => console.error('[payments verify] Calendly booking creation failed:', e.message));
+      }
       // Redeem the coupon (if one was applied) now that payment has
       // genuinely succeeded — this is the actual "consumption" point; a
       // unique(coupon_code, email) constraint on coupon_redemptions is
@@ -353,6 +372,9 @@ router.post('/bookings/:id/reconcile-payment', adminAuth, async (req, res) => {
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
   if (updated) {
+    if (updated.calendly_event_type_uri) {
+      createCalendlyBookingForPaidBooking(updated.id).catch(e => console.error('[reconcile-payment] Calendly booking creation failed:', e.message));
+    }
     if (updated.coupon_code && updated.email) {
       supabase.from('coupon_redemptions').insert({
         coupon_code: updated.coupon_code, email: updated.email.toLowerCase(), booking_id: updated.id
